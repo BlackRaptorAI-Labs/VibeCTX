@@ -1,7 +1,7 @@
 # VibeCTX — Decisions
 
 The project's design and release decisions, by number. Code comments and docs cite these as `D-nn`.
-Numbering continues at D-108.
+Numbering continues at D-109.
 
 ---
 
@@ -99,7 +99,8 @@ Numbering continues at D-108.
   fixes that CR records, and the npm account is no longer accessible — so **those three defects
   are still open in the only published package, and it can be neither deprecated nor
   superseded.** That is a fact about the world, not a documentation defect, and it is not closed
-  by this decision.
+  by this decision. *Superseded 2026-10-03 by D-108: npm is a distribution channel again and the
+  old packages are retired.*
 - **D-63** 2026-09-10 — **`ecosystem` is an internal field on `LibraryEntry`, never a config key.**
   Registry entries keep a single name-keyed namespace; **D-11 stands unchanged.** REJECTED: making
   `ecosystem` settable in `vibectx.config.json`. MEASURED 2026-09-10 at `main` @ `64d05e8` —
@@ -3393,3 +3394,19 @@ Probes changed: next.js `layouts and pages`; playwright `run tests`; react-route
 Known gap: a probe still counts as healthy when it follows an index page that is itself a link list. Several probes per source and a report that separates "could not fetch" from "fetched but topic missing" are follow-up work (PAR-1162).
 
 Ref: `src/registry.ts`, `test/registry-probes.test.ts`.
+
+## D-108 — npm distribution restored and old packages retired, 2026-10-03 (decisions 23 and 24)
+
+VibeCTX 0.3.0 is distributed both from source (github.com/BlackRaptorAI-Labs/VibeCTX, tag v0.3.0)
+and on npm as `@blackraptorai/vibectx@0.3.0`, after the maintainer recovered the npm account. This
+supersedes D-62's statement that the npm account was inaccessible and the old package could be
+neither deprecated nor superseded.
+
+On 2026-10-03, after 0.3.0 was published, the old releases were retired under npm's unpublish
+policy (docs.npmjs.com/policies/unpublish): `@blackraptorai/vibectx` 0.1.2 was deprecated and
+unpublished, so npm lists only 0.3.0, and `@blackraptorai/docs-cache-mcp` was deprecated and fully
+unpublished. The published tarball bundles its runtime dependencies unchanged (decision 24); B-27
+records that exception.
+
+Ref: `docs/known-limitations.md` B-27; `package.json`; `test/npm-package.test.ts`.
+
