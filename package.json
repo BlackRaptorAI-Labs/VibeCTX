@@ -1,0 +1,59 @@
+{
+  "name": "@blackraptorai/vibectx",
+  "version": "0.3.0",
+  "description": "Local docs-cache MCP server \u2014 fetch official library docs (llms.txt-first), cache to disk, serve to coding agents offline and deterministically.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Tom Hanks (BlackRaptorAI)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BlackRaptorAI-Labs/VibeCTX.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "documentation",
+    "llms.txt",
+    "claude",
+    "coding-agents",
+    "offline"
+  ],
+  "bin": {
+    "vibectx": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js"
+  ],
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+  },
+  "scripts": {
+    "repository:check": "node scripts/sync-repository.mjs --check",
+    "repository:sync": "node scripts/sync-repository.mjs --write",
+    "prebuild": "npm run repository:check",
+    "prepack": "npm run repository:check",
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run repository:check && npm run build && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "semver": "^7.8.5",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.11"
+  },
+  "bundleDependencies": [
+    "@modelcontextprotocol/sdk",
+    "zod"
+  ],
+  "overrides": {
+    "fast-uri": "^3.1.8",
+    "ip-address": "^10.7.1"
+  }
+}

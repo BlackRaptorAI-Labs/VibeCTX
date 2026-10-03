@@ -1,0 +1,60 @@
+# doctor — weekly retrieval-coverage check (PAR-707)
+#
+# Action versions mirror .github/workflows/ci.yml, pinned to commit SHAs (PAR-779) rather
+# than the mutable major-version tags they were on before.
+#
+# WHAT IT DOES
+#   Builds the package and runs `vibectx doctor` against the default registry
+#   with a cold cache and live network. Fails the job when any library is
+#   unhealthy: unreachable, index-only with no links followed, a probe query
+#   with no match, or a cache older than 2x TTL (cannot occur cold). The JSON
+#   report is uploaded as an artifact either way.
+#
+# WHAT IT CANNOT DO
+#   Judge whether the returned sections are the right ones — doctor measures
+#   retrieval, not correctness. A ✗ says "an agent asking this today gets
+#   nothing"; a ✓ says "it gets something".
+#
+# EXPECTED FIRST RESULT (NOT VERIFIED — docs sites are unreachable from the
+#   build sandbox; only raw.githubusercontent.com was exercised): aws-cdk may
+#   ✗ if docs.aws.amazon.com/cdk/v2/guide/llms.txt is absent, because its
+#   README fallback does not mention Kinesis/Firehose. That is the intended
+#   signal; adjust the probe or the URLs in src/registry.ts, not the check.
+
+name: doctor
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctor:
+    name: vibectx doctor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Run doctor (live network, cold cache)
+        run: |
+          set +e
+          node dist/index.js doctor --json > doctor-report.json
+          code=$?
+          # Human table from the cache the JSON pass just warmed — no second network pass.
+          node dist/index.js doctor --offline
+          exit $code
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: doctor-report
+          path: doctor-report.json

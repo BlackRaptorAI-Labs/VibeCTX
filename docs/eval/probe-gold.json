@@ -1,0 +1,598 @@
+{
+  "schemaVersion": 2,
+  "provenance": "PAR-827 (Phase 8): re-labelled 2026-09-20 against the REAL current corpus - each library's document fetched live through the real fetcher (getLibraryDoc), the same path the eval script and get_docs both use. Supersedes the 2026-09-06 GitHub-README-fallback labelling (schemaVersion 1) sandbox-only labelling could not avoid. All 60 of 60 questions completed. See `sources` below for the exact URL and corpus kind each library's labels were verified against; the eval script refuses to score a run whose resolved URL disagrees with the URL recorded here (see scripts/eval-retrieval.mjs's own validator).",
+  "questions": 60,
+  "corpus": "MEASURED 2026-09-20, live: 8 of 30 libraries resolve to a genuine full-text llms-full.txt doc (drizzle-orm, prisma, trpc, zod, hono, bun, vite is llms-full.txt too but see note, convex, openai, vitest, sveltekit, nuxt, vue, resend - see `sources`); most of the rest resolve to an llms.txt that is itself an index of links with no prose (next.js, react, supabase, shadcn, stripe, ai-sdk, expo's own llms-full.txt is ALSO index-shaped despite the name, clerk, anthropic-sdk, tanstack-query, motion); a few fall back to a raw GitHub README or a single docs-repo page because the registry's llms-full.txt/llms.txt candidates 404 live (tailwindcss, firebase, playwright, react-router, astro). This eval script (like D-27's original design) ranks ONLY the primary document it fetches - it does not follow index links the way get_docs does - so an index-only primary document honestly yields `expect: []` for most of its questions even though the real answer may exist on a page get_docs would follow into (see PAR-844/PAR-845 for that separate, real mechanism). A low top-1 hit rate here is the expected, honest result of that architecture plus many primary documents genuinely being indices, not a retrieval defect.",
+  "labellingRule": "A section counts as correct when a developer asking that question would be materially helped by that section's own text: it names the API or concept asked about and shows or explains it. A word appearing in a feature bullet, a link list, a sponsor list, a repository-directory listing, or an unrelated context (a support-policy table, a test-harness setup) does NOT count. Where no section of the fetched document meets that bar, `expect` is [] and `unanswerable` is true: the question is still one of the 60, and neither ranker can score it. Labelled from the documents' own headings and text, before either ranker was run against them - the same rule the 2026-09-06 labelling used, applied fresh against the new corpus rather than carried over.",
+  "matching": "Each regex in `expect` is tested (case-insensitively, JavaScript RegExp) against the top-ranked section's rendered heading path - ancestors joined with ' > ', the section's own heading last. A question is a hit when any regex matches.",
+  "sources": {
+    "next.js": {
+      "url": "https://nextjs.org/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "react": {
+      "url": "https://react.dev/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "supabase": {
+      "url": "https://supabase.com/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "tailwindcss": {
+      "url": "https://raw.githubusercontent.com/tailwindlabs/tailwindcss/main/README.md",
+      "corpusKind": "github-readme-fallback"
+    },
+    "shadcn": {
+      "url": "https://ui.shadcn.com/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "stripe": {
+      "url": "https://docs.stripe.com/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "ai-sdk": {
+      "url": "https://ai-sdk.dev/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "expo": {
+      "url": "https://docs.expo.dev/llms-full.txt",
+      "corpusKind": "index-only"
+    },
+    "drizzle-orm": {
+      "url": "https://orm.drizzle.team/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "prisma": {
+      "url": "https://www.prisma.io/docs/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "trpc": {
+      "url": "https://trpc.io/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "zod": {
+      "url": "https://zod.dev/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "hono": {
+      "url": "https://hono.dev/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "bun": {
+      "url": "https://bun.com/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "vite": {
+      "url": "https://vite.dev/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "clerk": {
+      "url": "https://clerk.com/docs/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "convex": {
+      "url": "https://docs.convex.dev/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "firebase": {
+      "url": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/main/README.md",
+      "corpusKind": "github-readme-fallback"
+    },
+    "openai": {
+      "url": "https://platform.openai.com/docs/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "anthropic-sdk": {
+      "url": "https://platform.claude.com/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "playwright": {
+      "url": "https://raw.githubusercontent.com/microsoft/playwright/main/README.md",
+      "corpusKind": "github-readme-fallback"
+    },
+    "vitest": {
+      "url": "https://vitest.dev/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "react-router": {
+      "url": "https://raw.githubusercontent.com/remix-run/react-router/main/docs/start/framework/routing.md",
+      "corpusKind": "docs-repo-page-fallback"
+    },
+    "astro": {
+      "url": "https://raw.githubusercontent.com/withastro/docs/main/src/content/docs/en/basics/astro-components.mdx",
+      "corpusKind": "docs-repo-page-fallback"
+    },
+    "sveltekit": {
+      "url": "https://svelte.dev/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "nuxt": {
+      "url": "https://nuxt.com/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "vue": {
+      "url": "https://vuejs.org/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    },
+    "tanstack-query": {
+      "url": "https://tanstack.com/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "motion": {
+      "url": "https://motion.dev/llms.txt",
+      "corpusKind": "index-only"
+    },
+    "resend": {
+      "url": "https://resend.com/docs/llms-full.txt",
+      "corpusKind": "docs-site-full-text"
+    }
+  },
+  "gold": [
+    {
+      "library": "next.js",
+      "query": "server actions revalidate",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (nextjs.org/llms.txt) is an index of links (Documentation/Learn/Blog sections). No section's own text discusses Server Actions or revalidate; the real content lives on followed pages this eval script does not fetch (get_docs does, separately - see PAR-844)."
+    },
+    {
+      "library": "next.js",
+      "query": "app router layout",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; no section body discusses App Router layouts, only a link list."
+    },
+    {
+      "library": "react",
+      "query": "useEffect cleanup",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (react.dev/llms.txt) is a pure link index (react.dev/llms-full.txt now 404s, so this eval script's own single-candidate fetch lands on the index, not the reference page). No section body explains useEffect cleanup; only a bare 'useEffect' link title."
+    },
+    {
+      "library": "react",
+      "query": "context provider",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; no 'Provider' text anywhere, only link titles like 'useContext'/'createContext'."
+    },
+    {
+      "library": "supabase",
+      "query": "row level security policy",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (supabase.com/llms.txt) is a pure link index; no section discusses RLS policy syntax, only a link to the Security guide."
+    },
+    {
+      "library": "supabase",
+      "query": "auth sign in with oauth",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; no OAuth sign-in content, only a link to the Auth guide."
+    },
+    {
+      "library": "tailwindcss",
+      "query": "dark mode variant",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: tailwindcss.com/llms-full.txt and llms.txt both 404 live (see PAR-839); the fetcher falls back to the raw GitHub README, a short marketing page with no dark-mode content at all."
+    },
+    {
+      "library": "tailwindcss",
+      "query": "responsive breakpoints",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same README fallback; no breakpoint content (see PAR-839's own investigation for the full live evidence)."
+    },
+    {
+      "library": "shadcn",
+      "query": "add button component",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (ui.shadcn.com/llms.txt) is a pure link index. The 'Button' component is only a one-line link description ('Button component with multiple variants'), not an explanation - the old 'Add Components' heading this was previously labelled against no longer exists in the current index shape."
+    },
+    {
+      "library": "shadcn",
+      "query": "theming css variables",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; 'Theming' is only a link title/description, not explanatory text."
+    },
+    {
+      "library": "stripe",
+      "query": "checkout session create",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (docs.stripe.com/llms.txt) is an enormous (453-link) index. 'Checkout Sessions' appears only as link titles under one big '## Docs' list-section; no section body explains how to create one."
+    },
+    {
+      "library": "stripe",
+      "query": "webhook signature verify",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; 'Resolve webhook signature verification errors' is only a link title in the same list, not explanatory text."
+    },
+    {
+      "library": "ai-sdk",
+      "query": "streamText tool calling",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (ai-sdk.dev/llms.txt) is a short link index (llms-full.txt is not reachable at the registry's configured path); 'AI SDK Core' link description mentions streamText/tools in one line, not an explanation."
+    },
+    {
+      "library": "ai-sdk",
+      "query": "useChat hook",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; 'AI SDK UI' link description mentions hooks generically, no useChat-specific content."
+    },
+    {
+      "library": "expo",
+      "query": "expo router navigation",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (docs.expo.dev/llms-full.txt, 55KB) is, despite its name, a pure sitemap/index (560 of 807 lines are links, 69%) - the 'Expo Router' section's body is a link list, not explanatory text about navigation."
+    },
+    {
+      "library": "expo",
+      "query": "push notifications",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; the 'Push notifications' section is likewise only a list of links to further pages."
+    },
+    {
+      "library": "drizzle-orm",
+      "query": "select with where",
+      "expect": [
+        "Filters$",
+        "Filters "
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current orm.drizzle.team/llms-full.txt (3.67M chars, genuine prose+code): the 'Filters' section under 'SQL Select' shows `db.select().from(users).where(eq(users.id, 42))` directly - a real, substantive answer (this heading repeats once per SQL dialect the doc covers; any occurrence is a valid hit)."
+    },
+    {
+      "library": "drizzle-orm",
+      "query": "migrations generate",
+      "expect": [
+        "drizzle-kit generate"
+      ],
+      "note": "MEASURED 2026-09-20: the '`drizzle-kit generate`' page (top-level heading, one per dialect) explains and shows the migration-generation command directly - a more precise real match than the prior label ('Ecosystem', from the old README's badge table)."
+    },
+    {
+      "library": "prisma",
+      "query": "upsert",
+      "expect": [
+        "Upsert a record"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current www.prisma.io/docs/llms-full.txt (6.0M chars): 'Writing data > Upsert a record' shows `.upsert({ create, update, conflictOn })` directly."
+    },
+    {
+      "library": "prisma",
+      "query": "relation include",
+      "expect": [
+        "Relations and joins"
+      ],
+      "note": "MEASURED 2026-09-20: 'Relations and joins (/docs/orm/fundamentals/relations-and-joins)' shows `.include(\"author\")` directly - a real, substantive answer (a change from the prior [] label, which was against a README with no such page)."
+    },
+    {
+      "library": "trpc",
+      "query": "create router procedure",
+      "expect": [
+        "Create a tRPC router"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current trpc.io/llms-full.txt (600K chars): '2. Create a tRPC router' (repeated per framework-integration guide) shows `t.router`/`t.procedure` directly."
+    },
+    {
+      "library": "trpc",
+      "query": "react query client",
+      "expect": [
+        "Create a Query Client factory"
+      ],
+      "note": "MEASURED 2026-09-20: '4. Create a Query Client factory' shows `new QueryClient()` wiring for tRPC + React Query directly."
+    },
+    {
+      "library": "zod",
+      "query": "parse object schema",
+      "expect": [
+        "Parsing data$",
+        "Defining a schema$",
+        "^Basic usage$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current zod.dev/llms-full.txt (286K chars): 'Basic usage > Defining a schema' shows `z.object({...})`; 'Basic usage > Parsing data' shows `.parse(...)` - either is a genuine, substantive answer depending on which the ranker weighs higher."
+    },
+    {
+      "library": "zod",
+      "query": "refine custom validation",
+      "expect": [
+        "\\.refine\\(\\)"
+      ],
+      "note": "MEASURED 2026-09-20: 'Refinements > `.refine()`' shows `z.string().refine((val) => val.length <= 255)` directly - a real answer (a change from the prior [] label, which was against a README with no such section)."
+    },
+    {
+      "library": "hono",
+      "query": "middleware",
+      "expect": [
+        "^Middleware$",
+        "Middleware$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current hono.dev/llms-full.txt (372K chars): the dedicated '# Middleware' page explains middleware fundamentals with real code (`app.use(logger())`, execution order) directly."
+    },
+    {
+      "library": "hono",
+      "query": "route params",
+      "expect": [
+        "Path Parameter"
+      ],
+      "note": "MEASURED 2026-09-20: 'Routing > Path Parameter' shows `c.req.param('name')` directly."
+    },
+    {
+      "library": "bun",
+      "query": "bun install",
+      "expect": [
+        "^bun install$",
+        "bun install"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current bun.com/llms-full.txt (2.1M chars): the dedicated '# bun install' page shows the command and its behavior directly."
+    },
+    {
+      "library": "bun",
+      "query": "Bun.serve http server",
+      "expect": [
+        "Write a simple HTTP server"
+      ],
+      "note": "MEASURED 2026-09-20: '# Write a simple HTTP server' shows `Bun.serve({ port, fetch })` directly (a more precise match than the prior 'Basic Setup'/'Reference' labels, which no longer exist under this heading shape)."
+    },
+    {
+      "library": "vite",
+      "query": "env variables",
+      "expect": [
+        "Env Variables"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current vite.dev/llms-full.txt (432K chars): 'Env Variables and Modes > Env Variables' explains `import.meta.env` and the `VITE_` prefix directly."
+    },
+    {
+      "library": "vite",
+      "query": "config proxy",
+      "expect": [
+        "server\\.proxy"
+      ],
+      "note": "MEASURED 2026-09-20: the 'server.proxy' config reference shows a real `proxy: { '/api': { target, changeOrigin, rewrite } }` example directly."
+    },
+    {
+      "library": "clerk",
+      "query": "middleware protect routes",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (clerk.com/docs/llms.txt, 520K chars) is, despite its size, a pure per-framework link index (2489 of 2540 lines are links); 'clerkMiddleware()' appears only as link titles/one-line descriptions, never explained."
+    },
+    {
+      "library": "clerk",
+      "query": "useUser hook",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; 'useUser()' appears only as repeated link titles (once per framework), never explained."
+    },
+    {
+      "library": "convex",
+      "query": "mutation query function",
+      "expect": [
+        "^Mutations$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current docs.convex.dev/llms-full.txt (2.5M chars): the '# Mutations' guide page shows a real `mutation({ args, handler })` example directly."
+    },
+    {
+      "library": "convex",
+      "query": "schema define table",
+      "expect": [
+        "Writing schemas"
+      ],
+      "note": "MEASURED 2026-09-20: 'Schemas > Writing schemas' shows `defineSchema({ messages: defineTable({...}) })` directly."
+    },
+    {
+      "library": "firebase",
+      "query": "firestore query where",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document is the raw GitHub README (llms-full.txt/llms.txt are not reachable at the registry's configured paths); 'Firestore Database Setup' is test-harness console setup, not query syntax - explicitly excluded by the labelling rule's own 'test-harness setup does NOT count' clause."
+    },
+    {
+      "library": "firebase",
+      "query": "auth sign in google",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same README; 'Authentication Support' is about enabling anonymous sign-in for the SDK's own test suite, not end-user Google sign-in - same test-harness exclusion."
+    },
+    {
+      "library": "openai",
+      "query": "chat completions streaming",
+      "expect": [
+        "Streaming API responses",
+        "^Enable streaming$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current platform.openai.com/docs/llms-full.txt (4.76M chars): '# Streaming API responses > Enable streaming' shows `stream: true` directly."
+    },
+    {
+      "library": "openai",
+      "query": "structured outputs",
+      "expect": [
+        "Structured model outputs"
+      ],
+      "note": "MEASURED 2026-09-20: '# Structured model outputs' shows `zodTextFormat`/`z.object` structured-output usage directly."
+    },
+    {
+      "library": "anthropic-sdk",
+      "query": "streaming messages",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (platform.claude.com/llms.txt, 68K chars) is a pure link index (629 of 699 lines are links); 'Streaming Messages' appears only as a link title, never explained (a regression from the prior README-based hit, which had real prose)."
+    },
+    {
+      "library": "anthropic-sdk",
+      "query": "tool use",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; 'tool use' pages are only link titles, never explained."
+    },
+    {
+      "library": "playwright",
+      "query": "locator click",
+      "expect": [
+        "Write a test$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current raw GitHub README (playwright.dev/llms-full.txt and llms.txt are not reachable at the registry's configured paths): 'Write a test' shows `.getByRole(...).click()` directly - re-verified unchanged from the prior label."
+    },
+    {
+      "library": "playwright",
+      "query": "expect toBeVisible",
+      "expect": [
+        "Write a test$"
+      ],
+      "note": "MEASURED 2026-09-20: the same 'Write a test' section also shows `expect(...).toBeVisible()` directly - re-verified unchanged."
+    },
+    {
+      "library": "vitest",
+      "query": "mock function",
+      "expect": [
+        "^Mock Functions$",
+        "Creating Mock Functions"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current vitest.dev/llms-full.txt (1.37M chars): '# Mock Functions > Creating Mock Functions' shows `vi.fn()` directly."
+    },
+    {
+      "library": "vitest",
+      "query": "config coverage",
+      "expect": [
+        "coverage\\.",
+        "^coverage$"
+      ],
+      "note": "MEASURED 2026-09-20: the '# coverage' config reference page enumerates real `coverage.*` options (provider, thresholds, reporter, ...) directly."
+    },
+    {
+      "library": "react-router",
+      "query": "loader data",
+      "expect": [
+        "Route Modules$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current docs page (raw GitHub routing.md - react-router.com's own llms-full.txt/llms.txt are not reachable at the registry's configured paths): 'Route Modules' shows `loaderData`/`loader()` directly - re-verified unchanged from the prior label."
+    },
+    {
+      "library": "react-router",
+      "query": "nested routes outlet",
+      "expect": [
+        "Nested Routes$"
+      ],
+      "note": "MEASURED 2026-09-20: 'Nested Routes' shows `<Outlet/>` and nested route config directly - re-verified unchanged."
+    },
+    {
+      "library": "astro",
+      "query": "content collections",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (raw GitHub astro-components.mdx - astro.build's own llms-full.txt/llms.txt are not reachable at the registry's configured paths) is about component structure/templates/slots; no section discusses content collections at all."
+    },
+    {
+      "library": "astro",
+      "query": "islands client directive",
+      "expect": [
+        "The Component Template$"
+      ],
+      "note": "MEASURED 2026-09-20: 'The Component Template' shows `<ReactPokemonComponent client:visible />` with an explicit 'client: directive to hydrate' explanation directly - re-verified unchanged from the prior label."
+    },
+    {
+      "library": "sveltekit",
+      "query": "load function",
+      "expect": [
+        "\\+page\\.js$",
+        "\\+page\\.server\\.js$",
+        "\\+layout\\.js$",
+        "\\+layout\\.server\\.js$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current svelte.dev/llms-full.txt (1.19M chars): '+page.js'/'+page.server.js' sections explain and show `load` functions directly - re-verified unchanged from the prior label."
+    },
+    {
+      "library": "sveltekit",
+      "query": "form actions",
+      "expect": [
+        "^Form actions$",
+        "\\+page\\.server\\.js$"
+      ],
+      "note": "MEASURED 2026-09-20: the dedicated '# Form actions' page explains form actions directly (a more precise match than the prior page-only label)."
+    },
+    {
+      "library": "nuxt",
+      "query": "useFetch data fetching",
+      "expect": [
+        "^useFetch$"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current nuxt.com/llms-full.txt (4.79M chars): the '# useFetch' composable reference shows `await useFetch('/api/modules', ...)` directly."
+    },
+    {
+      "library": "nuxt",
+      "query": "server api routes",
+      "expect": [
+        "^Server Routes$"
+      ],
+      "note": "MEASURED 2026-09-20: 'Server Routes' shows `defineEventHandler` for files under `server/api` directly."
+    },
+    {
+      "library": "vue",
+      "query": "computed reactive ref",
+      "expect": [
+        "Computed Properties"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current vuejs.org/llms-full.txt (953K chars): 'Computed Properties' explains and shows `computed(...)` directly - more precise than the prior generic 'Composition API' label."
+    },
+    {
+      "library": "vue",
+      "query": "component props emit",
+      "expect": [
+        "Component Events",
+        "Props \\{#props\\}"
+      ],
+      "note": "MEASURED 2026-09-20: 'Component Events' shows `defineEmits(['inFocus', 'submit'])` directly, and 'Props' explains prop declaration directly - either is a genuine, substantive answer (a change from the prior [] label)."
+    },
+    {
+      "library": "tanstack-query",
+      "query": "useQuery stale time",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (tanstack.com/llms.txt, 13.8K chars) is a pure link index (llms-full.txt is not reachable at the registry's configured path); no staleTime content, only links."
+    },
+    {
+      "library": "tanstack-query",
+      "query": "mutation invalidate queries",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; no invalidateQueries content, only links."
+    },
+    {
+      "library": "motion",
+      "query": "animate variants",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: the live primary document (motion.dev/llms.txt, 48K chars) is a pure link index (llms-full.txt is not reachable at the registry's configured path); 'variants' appears only inside one-line link descriptions, never explained (a regression from the prior README-based hit)."
+    },
+    {
+      "library": "motion",
+      "query": "layout animation",
+      "expect": [],
+      "unanswerable": true,
+      "note": "MEASURED 2026-09-20: same index-only document; 'Layout animation' pages are only link titles, never explained."
+    },
+    {
+      "library": "resend",
+      "query": "send email react template",
+      "expect": [
+        "Send a React Email template"
+      ],
+      "note": "MEASURED 2026-09-20 against the real, current resend.com/docs/llms-full.txt (2.2M chars): '# Send a React Email template' shows `--react-email ./emails/welcome.tsx` directly (a more precise match than the prior 'Send email using React' heading, which no longer exists under this shape)."
+    },
+    {
+      "library": "resend",
+      "query": "domains verify",
+      "expect": [
+        "Add and verify a domain"
+      ],
+      "note": "MEASURED 2026-09-20: '# Add and verify a domain' explains domain verification directly (a more precise match than the prior 'SDK > Usage' label)."
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    # VibeCTX is distributed as source, so a `v*` tag IS the release artifact — the thing a
+    # user checks out and builds. It must therefore be verified. Until 2026-09-07 the only
+    # tag-triggered job lived in publish.yml; removing that workflow with npm distribution
+    # would have left `git push --tags` running nothing at all.
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  # R-1 / PAR-829 — `package.json`'s `engines.node` is `^20.19.0 || ^22.12.0 || >=24.0.0`, the
+  # INTERSECTION of `vite`'s and `vitest`'s own declared ranges (Tom's decision: fix the
+  # constraint rather than document around it — a plain `>=20.19.0` floor silently admitted
+  # Node 21.x and 22.0.0–22.11.x, which `vite` itself does not support; deriving from `vite`
+  # alone then silently admitted 23.x too, which `vitest` itself does not support — narrower
+  # than `vite`'s own range in that band. Two dependencies, not one: see D-80 in docs/decisions.md,
+  # "the Node 23 hole," for the regression this recurred as before `test/engines.test.ts` was
+  # rewritten to check both). `test-matrix` proves all THREE bands of that range: `20.19.x`,
+  # `22` (resolves to the latest ≥22.12), and `24` (resolves to the latest ≥24.0.0, added
+  # code-reviewer round 4, B-1 — the range grew a third band when `vitest`'s own bump added
+  # one, and the matrix silently didn't; "CI tests both ends" was true with two bands and false
+  # with three, so it stayed true by adding the missing leg, not by re-wording around the gap).
+  # The excluded bands (21.x, 22.0–22.11, 23.x) are deliberately NOT separate matrix legs:
+  # `engines` now documents them as unsupported (though `npm` does not enforce that by default
+  # — no `.npmrc` here sets `engine-strict`, so an install there still only warns), and there
+  # is nothing SUPPORTED in any of those bands to test against.
+  test-matrix:
+    strategy:
+      # One leg failing (a flake on the runner, say) must not hide the other legs' results —
+      # the whole point here is to see every number, not stop at the first red. Load-bearing
+      # for the `test` gate job below: it trusts `needs.test-matrix.result` to reflect every
+      # combination, which requires neither `continue-on-error: true` here nor a per-leg `if:`
+      # — either would launder a real failure into a false "success" downstream.
+      fail-fast: false
+      matrix:
+        node-version: ["20.19.x", "22", "24"]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - name: Full suite with outbound networking disabled
+        run: sh scripts/test-network-off.sh
+      - name: Prove a missing network namespace fails the named isolation test
+        run: |
+          set +e
+          npm test -- test/network-guard-isolation.test.ts --reporter=verbose > "$RUNNER_TEMP/network-isolation-mutation.log" 2>&1
+          mutation_exit=$?
+          set -e
+          cat "$RUNNER_TEMP/network-isolation-mutation.log"
+          test "$mutation_exit" -ne 0
+          node --input-type=module - "$RUNNER_TEMP/network-isolation-mutation.log" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          const output = readFileSync(process.argv[2], 'utf8').replace(/\x1b\[[0-9;]*m/g, '');
+          assert(output.includes('PAR-1038: the hosted full suite has only loopback interfaces and runs as a normal user'));
+          assert(/Tests\s+1 failed/.test(output));
+          assert(output.includes('AssertionError'));
+          NODE
+      - run: npm test -- test/readme-release-consistency.test.ts --reporter=verbose
+      - run: npm run build
+
+  # Branch protection's required check is named `test`. A job that itself carries
+  # `strategy.matrix` reports under a name GitHub suffixes per combination (`test (20.19.x)`,
+  # `test (22)`), which is not the literal string `test` and would stop matching — every PR
+  # becomes unmergeable until someone notices and updates the repo's required-checks setting
+  # (R-1/PAR-829's own stated risk). This thin gate job carries NO matrix, so its check name is
+  # exactly `test`, unchanged from before this file added one; it only reports pass/fail of
+  # `test-matrix` as a whole.
+  #
+  # `if: always()` is LOAD-BEARING, not defensive housekeeping (code-reviewer round 1, S-1):
+  # without it, this job is SKIPPED whenever `test-matrix` fails — and GitHub reports a skipped
+  # job as check-run conclusion `skipped`, which branch protection treats as PASSING, not as
+  # "no status." Removing `always()` would turn this gate green exactly when the matrix is red.
+  # Do not remove it. (Verified against GitHub's own documented behaviour, not assumed:
+  # https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks)
+  test:
+    needs: test-matrix
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Require every matrix leg to have passed
+        env:
+          MATRIX_RESULT: ${{ needs.test-matrix.result }}
+        run: |
+          if [ "$MATRIX_RESULT" != "success" ]; then
+            echo "test-matrix: $MATRIX_RESULT (one or more Node versions failed or were cancelled)" >&2
+            exit 1
+          fi

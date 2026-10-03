@@ -1,0 +1,48 @@
+{
+  "$comment": "An example team stack (a Node API on Postgres with AWS CDK) — shipped as the VibeCTX default registry through 0.1.3, moved here when the default became the vibe-coder top-30. Entries are merged over the defaults (config wins on name collision). Use: vibectx --config ./node-api-stack.vibectx.config.json — or copy this file into your repo as vibectx.config.json so every teammate's agent gets the same stack.",
+  "libraries": [
+    {
+      "name": "fastify",
+      "urls": [
+        "https://fastify.dev/llms-full.txt",
+        "https://fastify.dev/llms.txt",
+        "https://raw.githubusercontent.com/fastify/fastify/main/docs/Reference/Index.md"
+      ],
+      "description": "Fastify web framework reference",
+      "probeQueries": ["lifecycle hooks"]
+    },
+    {
+      "name": "timescaledb",
+      "urls": [
+        "https://docs.timescale.com/llms-full.txt",
+        "https://docs.timescale.com/llms.txt",
+        "https://raw.githubusercontent.com/timescale/timescaledb/main/README.md"
+      ],
+      "description": "TimescaleDB time-series Postgres extension",
+      "probeQueries": ["hypertable"]
+    },
+    {
+      "name": "pgvector",
+      "urls": ["https://raw.githubusercontent.com/pgvector/pgvector/master/README.md"],
+      "description": "pgvector Postgres vector-similarity extension",
+      "probeQueries": ["hnsw index"]
+    },
+    {
+      "name": "aws-cdk",
+      "urls": [
+        "https://docs.aws.amazon.com/cdk/v2/guide/llms.txt",
+        "https://raw.githubusercontent.com/aws/aws-cdk/main/README.md"
+      ],
+      "description": "AWS CDK v2 (incl. Kinesis/Firehose constructs)",
+      "probeQueries": ["kinesis firehose delivery stream"]
+    },
+    {
+      "name": "fastify-type-provider-zod",
+      "urls": [
+        "https://raw.githubusercontent.com/turkerdev/fastify-type-provider-zod/main/README.md"
+      ],
+      "description": "Zod type provider for Fastify",
+      "probeQueries": ["type provider setup"]
+    }
+  ]
+}
