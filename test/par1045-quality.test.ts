@@ -13,12 +13,14 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/server.js";
 import { dispatchCli } from "../src/cli.js";
 import { readConsent } from "../src/consent.js";
+import { stubTerminal, restoreTerminals } from "./helpers/terminal.js";
+import { resetStderrWarnings } from "../src/redact-paths.js";
 
 vi.mock("node:os", async (original) => { const actual = await original<typeof import("node:os")>(); return { ...actual, default: actual, homedir: vi.fn(actual.homedir) }; });
 vi.mock("node:fs", async (original) => { const actual = await original<typeof import("node:fs")>(); return { ...actual, default: actual, rmSync: vi.fn(actual.rmSync), writeFileSync: vi.fn(actual.writeFileSync), lstatSync: vi.fn(actual.lstatSync) }; });
 let dir: string;
-beforeEach(() => { dir = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), "quality-"))); vi.stubEnv("VIBECTX_CACHE_DIR", join(dir, "cache")); vi.stubEnv("VIBECTX_CACHE_MAX_MB", "0"); vi.stubEnv("VIBECTX_NO_LOG", "1"); resetCacheRootState(); resetCacheEvictionState(); });
-afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllEnvs(); resetCacheRootState(); fs.rmSync(dir, { recursive: true, force: true }); });
+beforeEach(() => { resetStderrWarnings(); dir = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), "quality-"))); vi.stubEnv("VIBECTX_CACHE_DIR", join(dir, "cache")); vi.stubEnv("VIBECTX_CACHE_MAX_MB", "0"); vi.stubEnv("VIBECTX_NO_LOG", "1"); resetCacheRootState(); resetCacheEvictionState(); });
+afterEach(() => { restoreTerminals(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllEnvs(); resetCacheRootState(); fs.rmSync(dir, { recursive: true, force: true }); });
 
 it("PAR-1045: requirements include notes are bounded and duplicates collapse", () => {
   fs.writeFileSync(join(dir, "requirements.txt"), "requests==2.32.0\n" + "-r absent.txt\n".repeat(20_000));
@@ -43,7 +45,8 @@ it("PAR-1045: root permissions warning includes an exact safely quoted chmod com
   const command = notes[0].match(/chmod 700 [^\n]+/u)?.[0]; expect(command).toBeTruthy();
   execFileSync("/bin/sh", ["-c", command!]); expect(fs.statSync(root).mode & 0o777).toBe(0o700);
 });
-it("PAR-1045: CLI repair warning contains the executable real path only on the terminal", async () => {
+it.each([true, false, undefined])("PAR-1045: CLI repair warning contains the executable real path only on the terminal (TTY=%s)", async (isTTY) => {
+  stubTerminal(process.stderr, isTTY);
   if (process.platform === "win32") return;
   const root = join(dir, "terminal cache ' literal $HOME `marker`");
   vi.stubEnv("VIBECTX_CACHE_DIR", root); fs.mkdirSync(root, { mode: 0o755 }); fs.chmodSync(root, 0o755);
@@ -53,8 +56,13 @@ it("PAR-1045: CLI repair warning contains the executable real path only on the t
   expect(await dispatchCli(["node", "vibectx", "consent", "allow"], io)).toBe(0);
   expect(readConsent()?.network).toBe("allowed");
   const warnings = terminal.filter((s) => s.includes("chmod 700")); expect(warnings).toHaveLength(1);
-  // PAR-1044 L-5: the real path is kept only in the exact copy-paste command (decision 10).
-  expect(warnings[0]).toContain(`chmod 700 '${root.replace(/'/g, "'\\''")}'`);
+  if (isTTY === true) expect(warnings[0]).toContain(`chmod 700 '${root.replace(/'/g, "'\\''")}'`);
+  else {
+    expect(warnings[0]).toContain('chmod 700 "$VIBECTX_CACHE_DIR"');
+    expect(warnings[0]).not.toMatch(/(?:\/|[A-Za-z]:[\\/])/u);
+    expect(warnings[0]).toContain("VibeCTX or MCP config");
+    expect(warnings[0]).toContain("shown above as [cache]");
+  }
   expect(warnings[0].split("\n")[0]).toContain("the cache root [cache] already exists");
   const command = warnings[0].match(/chmod 700 [^\n]+/u)?.[0]; expect(command).toBeTruthy();
   execFileSync("/bin/sh", ["-c", command!]); expect(fs.statSync(root).mode & 0o777).toBe(0o700);
@@ -62,7 +70,8 @@ it("PAR-1045: CLI repair warning contains the executable real path only on the t
   expect(await dispatchCli(["node", "vibectx", "consent", "allow"], io)).toBe(0);
   expect(terminal.filter((s) => s.includes("chmod 700"))).toHaveLength(1);
 });
-it("PAR-1045: MCP repair warning reaches stderr while the complete tool reply hides the real path", async () => {
+it.each([true, false, undefined])("PAR-1045: MCP repair warning reaches stderr while the complete tool reply hides the real path (TTY=%s)", async (isTTY) => {
+  stubTerminal(process.stderr, isTTY);
   if (process.platform === "win32") return;
   const root = join(dir, "model-cache-PATHMARK-private");
   vi.stubEnv("VIBECTX_CACHE_DIR", root); fs.mkdirSync(root, { mode: 0o755 }); fs.chmodSync(root, 0o755);
@@ -77,7 +86,12 @@ it("PAR-1045: MCP repair warning reaches stderr while the complete tool reply hi
     expect(reply.isError).not.toBe(true); expect(reply.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: "text" })]));
     expect(readConsent()?.network).toBe("disclosed"); expect(fetch).not.toHaveBeenCalled();
     const warnings = terminal.filter((s) => s.includes("chmod 700")); expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain(root); expect(fs.statSync(root).mode & 0o777).toBe(0o755);
+    if (isTTY === true) expect(warnings[0]).toContain(root);
+    else {
+      expect(warnings[0]).not.toMatch(/(?:\/|[A-Za-z]:[\\/])/u);
+      expect(warnings[0]).toContain('chmod 700 "$VIBECTX_CACHE_DIR"');
+    }
+    expect(fs.statSync(root).mode & 0o777).toBe(0o755);
     const wireReply = JSON.stringify(reply); expect(wireReply).toContain("Network access disclosure");
     expect(wireReply).not.toContain(root); expect(wireReply).not.toContain(dir); expect(wireReply).not.toContain("PATHMARK-private");
     const repeated = await client.callTool({ name: "doctor", arguments: {} });
@@ -87,7 +101,7 @@ it("PAR-1045: MCP repair warning reaches stderr while the complete tool reply hi
 });
 it("PAR-1045: repair-path disclosure is documented as terminal-only with model replies redacted", () => {
   const readme = fs.readFileSync(new URL("../README.md", import.meta.url), "utf8");
-  expect(readme).toContain("The copy-paste chmod command includes the real cache path only on your terminal");
+  expect(readme).toContain("The copy-paste chmod command includes the real cache path only when stderr is a real terminal");
   expect(readme).toContain("MCP tool replies keep local paths redacted");
 });
 it("PAR-1045: corrupt doctor state emits an honest path-free warning and remains empty", () => {

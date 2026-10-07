@@ -894,7 +894,7 @@ describe('get_docs mode over the transport (D-26)', () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 404 })));
     const { client, call } = await connect(stripeRegistry(), { VIBECTX_NO_AUTOWARM: "1" });
     const out = await call("get_docs", { library: "stripe", topic: "checkout session create", version: "9.9.9" });
-    expect(out).toContain('Version 9.9.9 was requested, but "stripe" is a curated entry');
+    expect(out).toContain("Not version-matched: you asked for stripe 9.9.9");
     await client.close();
   });
 

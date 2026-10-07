@@ -12,7 +12,7 @@ describe("PAR-1015: 0.3.0 source-release preparation", () => {
       version: string;
       packages: { "": { version: string; bin: Record<string, string> } };
     };
-    expect(pkg.version).toBe("0.3.0");
+    expect(pkg.version).toBe("0.3.1");
     expect(lock.version).toBe(pkg.version);
     expect(lock.packages[""].version).toBe(pkg.version);
     expect(pkg.bin).toEqual({ vibectx: "dist/index.js" });
@@ -76,7 +76,7 @@ describe("PAR-1015: 0.3.0 source-release preparation", () => {
     const transportLimit = readme.split("Every MCP string argument is bounded")[1]?.split("\n## Command line")[0];
     expect(transportLimit).toBeDefined();
     expect(transportLimit).toContain("before Zod validates a tool");
-    expect(transportLimit).toContain("no inbound-message-size option");
+    expect(transportLimit).toContain("capped at 10 MiB by default");
     expect(transportLimit).toContain("MCP client you");
     expect(transportLimit).toContain("trust to bound requests");
   });

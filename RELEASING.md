@@ -176,3 +176,47 @@ diff <(git -C <fresh> ls-files | sort) <(git -C <source> ls-tree -r --name-only 
 - Before the old repository is made private (a maintainer-only setting change), list its forks
   and decide about each one: `gh api repos/<owner>/<old-repo>/forks --jq '.[].full_name'`.
 
+
+## 9. Later releases (0.3.1 and after)
+
+Section 8 builds the public repository the first time. Every later release adds to it instead.
+
+In this section, **the owner** means the BlackRaptorAI account holder, who alone holds the npm
+credentials, approves the public-repository PR, tags, creates the GitHub Release and publishes.
+
+
+1. **Develop in the private repository.** Every change merges there first, with its review.
+2. **Make the release commit** on the private `main`: the version bump on top of the reconciled
+   branch (sections 1–6).
+3. **Add one clean commit on top of `BlackRaptorAI-Labs/VibeCTX` `main`**, through a pull request
+   the owner approves. Start the release branch from the **current** public `main`, never
+   from whatever is checked out, and prove it before building anything. Build the commit from
+   `git archive` of the release commit, so untracked local files never reach it. Then prove its
+   only parent is that public `main` and its tree equals the release commit's tree, before
+   pushing:
+
+   ```
+   git -C <labs> fetch origin main && git -C <labs> checkout -B release-<version> origin/main
+   [ "$(git -C <labs> rev-parse HEAD)" = "$(git ls-remote https://github.com/BlackRaptorAI-Labs/VibeCTX.git refs/heads/main | cut -f1)" ] && echo "STARTS AT PUBLIC MAIN"
+   git -C <labs> rm -rq . && git -C <source> archive --format=tar <release-commit> | tar -x -C <labs> && git -C <labs> add -A
+   git -C <labs> -c user.name="<github-login>" -c user.email="<id>+<github-login>@users.noreply.github.com" commit -m "VibeCTX <version>"
+   [ "$(git -C <labs> rev-parse HEAD^)" = "$(git -C <labs> rev-parse origin/main)" ] && echo "ONE COMMIT ON TOP OF PUBLIC MAIN"
+   [ "$(git -C <labs> rev-parse HEAD^{tree})" = "$(git -C <source> rev-parse <release-commit>^{tree})" ] && echo "SAME TREE"
+   ```
+
+   All three lines (`STARTS AT PUBLIC MAIN`, `ONE COMMIT ON TOP OF PUBLIC MAIN`, `SAME TREE`)
+   must print before the branch is pushed.
+
+   Merge with a merge commit, never squash or rebase, then check again that the public `main`
+   tree equals the release commit's tree. Public history is kept; the repository is never
+   re-initialized.
+4. **The owner tags** `v<version>` on that public `main` commit (annotated, noreply identity).
+5. **The owner publishes the GitHub Release** from the tag (section 7).
+6. **The owner publishes to npm**, from the tagged public checkout, last, because it is the
+   only step that cannot be undone. Builders never hold npm credentials.
+
+**Retiring an npm version: deprecate only.** Never unpublish a published version, and never
+chain `npm deprecate` with `npm unpublish`. Unpublishing cannot be undone, breaks every pinned
+install, takes the deprecation message with it, and the version number can never be published
+again. The only exception is a security problem or a leaked secret, and then only with the
+owner's explicit approval for that version.

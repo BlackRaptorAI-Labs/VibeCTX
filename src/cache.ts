@@ -22,7 +22,7 @@ import {
   validEtag,
   MAX_META_FILE_BYTES,
 } from "./cache-meta.js";
-import { writeStderrWarning } from "./redact-paths.js";
+import { cachePermissionRepair, writeStderrWarning } from "./redact-paths.js";
 
 // D-71 (PAR-749) moved the shared validator, the collision-resistant `urlSlug`/`libDirName`
 // transforms and the meta/slug provenance check into `./cache-meta.ts` — the one module both this file
@@ -479,7 +479,7 @@ export function sweepCacheRootTempFiles(): void {
  * without touching those modules' other, pre-existing `warn(...)` calls (which already manage
  * their own newlines correctly). See any of those four call sites for the wrap itself.
  */
-export function ensureCacheRoot(dir: string, warn: (message: string) => void = toStderr): boolean {
+export function ensureCacheRoot(dir: string, warn: (message: string) => void = toStderr, stderrIsTTY = process.stderr.isTTY === true): boolean {
   // PAR-859 — checked first, unconditionally: see this function's own doc comment for why this
   // must run before `mkdirSync` rather than be discovered by catching what it throws (it often
   // does not throw at all), and before the permission checks below (which now assume `dir` is
@@ -567,7 +567,7 @@ export function ensureCacheRoot(dir: string, warn: (message: string) => void = t
               `0${mode.toString(8).padStart(3, "0")} (vibectx creates new cache roots owner-only, at 0700) — ` +
               `it was NOT changed. Existing files and directories in it are not tightened either. If you did ` +
               `not deliberately share this cache directory with another user or process, tighten it with:\n` +
-              `chmod 700 '${dir.replace(/'/g, "'\\''")}'`,
+              cachePermissionRepair(dir, stderrIsTTY),
           );
         }
       }

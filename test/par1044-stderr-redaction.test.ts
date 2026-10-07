@@ -4,6 +4,8 @@ import os from "node:os";
 import { join } from "node:path";
 import { recordActivity } from "../src/activity-log.js";
 import { ensureCacheRoot, resetCacheRootState } from "../src/cache.js";
+import { stubTerminal, restoreTerminals } from "./helpers/terminal.js";
+import { resetStderrWarnings } from "../src/redact-paths.js";
 
 // PAR-1044 L-5: best-effort warnings on stderr show `[cache]` and `~`, not full local paths,
 // and the same warning is written once per process. Decision 10 keeps the real path in the
@@ -11,6 +13,7 @@ import { ensureCacheRoot, resetCacheRootState } from "../src/cache.js";
 let dir: string;
 let terminal: string[];
 beforeEach(() => {
+  resetStderrWarnings();
   // Not realpath'd on purpose: on macOS the temp folder sits under a symlinked /var, and the
   // cache root is pinned to its real spelling, so both spellings must be redacted.
   dir = fs.mkdtempSync(join(os.tmpdir(), "l5-PATHMARK-"));
@@ -22,7 +25,7 @@ beforeEach(() => {
   vi.spyOn(process.stderr, "write").mockImplementation((chunk) => { terminal.push(String(chunk)); return true; });
 });
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllEnvs(); resetCacheRootState();
+  restoreTerminals(); vi.restoreAllMocks(); vi.unstubAllEnvs(); resetCacheRootState();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -40,7 +43,8 @@ it("PAR-1044 L-5: an activity-log write failure reaches stderr with the cache fo
   expect(text).not.toContain("PATHMARK");
 });
 
-it("PAR-1044 L-5: the loose cache-root warning redacts its prose and keeps the real path only in the chmod line (decision 10)", () => {
+it.each([true, false, undefined])("PAR-1044 L-5: the loose cache-root warning redacts its prose and keeps the real path only in the terminal chmod line (TTY=%s)", (isTTY) => {
+  stubTerminal(process.stderr, isTTY);
   if (process.platform === "win32" || process.getuid?.() === 0) return;
   const root = join(dir, "cache");
   fs.mkdirSync(root, { mode: 0o755 }); fs.chmodSync(root, 0o755);
@@ -49,7 +53,11 @@ it("PAR-1044 L-5: the loose cache-root warning redacts its prose and keeps the r
   expect(warnings).toHaveLength(1);
   const lines = warnings[0]!.split("\n").filter((line) => line.length > 0);
   const command = lines.filter((line) => line.startsWith("chmod 700 "));
-  expect(command).toEqual([`chmod 700 '${fs.realpathSync(root)}'`]);
+  if (isTTY === true) expect(command).toEqual([`chmod 700 '${fs.realpathSync(root)}'`]);
+  else {
+    expect(command).toEqual(['chmod 700 "$VIBECTX_CACHE_DIR"']);
+    expect(warnings[0]).not.toMatch(/(?:\/|[A-Za-z]:[\\/])/u);
+  }
   const prose = lines.filter((line) => !line.startsWith("chmod 700 ")).join("\n");
   expect(prose).toContain("the cache root [cache] already exists");
   expect(prose).not.toContain("PATHMARK");

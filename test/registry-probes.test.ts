@@ -15,7 +15,7 @@ it("decision 22: four libraries start from a working docs source and keep their 
   const urls = (name: string) => DEFAULT_REGISTRY.find((entry) => entry.name === name)?.urls ?? [];
   const expected: Record<string, { first: string; kept: string }> = {
     tailwindcss: { first: "https://raw.githubusercontent.com/tailwindlabs/tailwindcss.com/main/src/docs/responsive-design.mdx", kept: "https://raw.githubusercontent.com/tailwindlabs/tailwindcss/refs/heads/main/README.md" },
-    "tanstack-query": { first: "https://tanstack.com/query/latest/docs/framework/react/guides/queries.md", kept: "https://tanstack.com/llms.txt" },
+    "tanstack-query": { first: "https://tanstack.com/query/latest/llms.txt", kept: "https://tanstack.com/llms.txt" },
     firebase: { first: "https://firebase.google.com/docs/llms.txt", kept: "https://raw.githubusercontent.com/firebase/firebase-js-sdk/refs/heads/main/README.md" },
     supabase: { first: "https://supabase.com/llms-full.txt", kept: "https://supabase.com/llms.txt" },
   };

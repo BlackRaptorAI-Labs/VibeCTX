@@ -628,12 +628,16 @@ export const SECTION_ASSEMBLE_JOIN = "\n\n---\n\n";
 export function selectSections(sections: Section[], maxTokens: number, reservedChars = 0): Section[] {
   const budget = Math.max(0, maxTokens * 4 - reservedChars);
   const chosen: Section[] = [];
+  const chosenBodies = new Set<string>();
   let used = 0;
   for (const s of sections) {
+    // PAR-1271 / plan D13: skip non-empty exact bodies before pricing; keep heading-only sections.
+    if (s.body.length > 0 && chosenBodies.has(s.body)) continue;
     const chunk = renderSection(s);
     const joinCost = chosen.length > 0 ? SECTION_ASSEMBLE_JOIN.length : 0;
     if (used + joinCost + chunk.length > budget && chosen.length > 0) break;
     chosen.push(s);
+    chosenBodies.add(s.body);
     used += joinCost + chunk.length;
   }
   return chosen;

@@ -54,6 +54,9 @@ export interface DocResult {
   notModified?: true;
   /** Present when the network failed and cached content past its TTL was served. */
   staleNote?: string;
+  /** PAR-1270: candidates refused for size during this call before this document was served.
+   *  Not persisted: a later cache-only call has not observed a new size refusal. */
+  skippedTooLarge?: string[];
 }
 
 /** PAR-744 (F-7, code-reviewer round 1, N1) — the one predicate for "this `DocResult` is not
@@ -560,6 +563,7 @@ export async function getLibraryDoc(
 ): Promise<DocResult | undefined> {
   const ttl = entry.ttlHours ?? DEFAULT_TTL_HOURS;
   const failures: Array<DocumentFetchFailure["kind"]> = [];
+  const skippedTooLarge: string[] = [];
 
   if (!opts.forceRefresh) {
     for (const url of entry.urls) {
@@ -610,12 +614,15 @@ export async function getLibraryDoc(
         // current`), so the `cached.meta.finalUrl` fallback is provably unreachable on this
         // branch — deleted rather than kept as dead defensive code (`out.finalUrl ?? url` is
         // the real fallback chain: only `url` itself is reached when there was no redirect).
-        return { content: cached.content, url, finalUrl: out.finalUrl ?? url, fetchedAt: touchedAt, stale: false, notModified: true };
+        return { content: cached.content, url, finalUrl: out.finalUrl ?? url, fetchedAt: touchedAt, stale: false, notModified: true,
+          ...(skippedTooLarge.length > 0 ? { skippedTooLarge: [...skippedTooLarge] } : {}) };
       }
       if (out.status === "ok" && out.body !== undefined) {
         const fetchedAt = writeCache(entry.name, url, out.body, out.etag, out.finalUrl);
-        return { content: out.body, url, finalUrl: out.finalUrl ?? url, fetchedAt, stale: false };
+        return { content: out.body, url, finalUrl: out.finalUrl ?? url, fetchedAt, stale: false,
+          ...(skippedTooLarge.length > 0 ? { skippedTooLarge: [...skippedTooLarge] } : {}) };
       }
+      if (out.status === "too-large") skippedTooLarge.push(url);
       failures.push(out.httpStatus === 404 ? "not-found" : out.failureKind ?? "mixed");
     }
   }
@@ -637,9 +644,12 @@ export async function getLibraryDoc(
         finalUrl: hit.meta.finalUrl ?? url,
         fetchedAt: hit.meta.fetchedAt,
         stale: true,
+        ...(skippedTooLarge.length > 0 ? { skippedTooLarge: [...skippedTooLarge] } : {}),
         staleNote: opts.offline
           ? `STALE: served from cache fetched ${hit.meta.fetchedAt}; offline mode, network not attempted.`
-          : `STALE: served from cache fetched ${hit.meta.fetchedAt}; all candidate URLs unreachable just now.`,
+          : skippedTooLarge.length > 0
+            ? `STALE: served from cache fetched ${hit.meta.fetchedAt}; no download succeeded; oversized documents were refused.`
+            : `STALE: served from cache fetched ${hit.meta.fetchedAt}; all candidate URLs unreachable just now.`,
       };
     }
   }

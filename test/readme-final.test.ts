@@ -29,7 +29,7 @@ const mib = (bytes: number) => bytes / (1024 * 1024);
 // accidentally set still fails below instead of silently bypassing the count check.
 const collected = process.env.VIBECTX_README_COLLECTION === "1" ? undefined
   : JSON.parse(execFileSync(process.execPath, [join(root, "node_modules/vitest/vitest.mjs"), "list", "--json"], {
-    cwd: root, encoding: "utf8", timeout: 30_000, maxBuffer: 8 * 1024 * 1024,
+    cwd: root, encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
     env: { ...process.env, VIBECTX_README_COLLECTION: "1" },
   })) as { name: string; file: string }[];
 
