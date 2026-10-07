@@ -1,7 +1,7 @@
 # VibeCTX — Decisions
 
 The project's design and release decisions, by number. Code comments and docs cite these as `D-nn`.
-Numbering continues at D-109.
+Numbering continues at D-119.
 
 ---
 
@@ -3410,3 +3410,144 @@ records that exception.
 
 Ref: `docs/known-limitations.md` B-27; `package.json`; `test/npm-package.test.ts`.
 
+
+## D-109 — Repair paths require a real terminal (PAR-1273, D3)
+
+Tom chose this policy on 2026-10-05, amending plan decision 10. The cache-permission repair
+command includes the safely quoted real cache folder only when stderr is a real terminal.
+Otherwise it reads `chmod 700 "$VIBECTX_CACHE_DIR"`, with a note identifying the folder set
+as VIBECTX_CACHE_DIR in the VibeCTX or MCP config, shown above as [cache]. Human doctor
+output redacts local paths when stdout is not a real terminal. Terminal detection has test
+seams. JSON's explicit `--show-cache-path` opt-in and MCP reply redaction retain their existing
+behavior. The three approved repair-path assertions now cover true, false and absent terminal
+states; all tool-reply redaction assertions stay.
+
+Ref: `src/cache.ts`; `src/redact-paths.ts`; `src/cli.ts`;
+`test/par1273-terminal-paths.test.ts`; `test/par1045-quality.test.ts`;
+`test/par1044-stderr-redaction.test.ts`.
+
+
+## D-110 — decided 2026-10-05 by Tom, PAR-1269 (decisions D5 and D6; amends D-76)
+
+D-76 said a curated entry has "no version-specific candidate to try". That premise was false
+for some libraries: Prisma publishes per-major indexes (`www.prisma.io/docs/llms/orm-v6.txt`,
+`orm-v7.txt`), and its `llms-full.txt` contains no v6 pages at all. A curated entry may now list
+sources per major version in an optional `versionUrls` field (`{ "6": [...] }`), validated in
+config exactly like `urls` (https only, the same URL policy, the same 50-entry bound).
+
+When `get_docs` receives an explicit `version` for a curated entry and `versionUrls` lists that
+version's major, those URLs are this call's candidate list for the existing fetch path, and the
+reply states `Version-matched: major N (from <url>)`. The match is to the major only, so the
+Source line names no exact version. If that major's sources cannot be fetched and nothing is
+cached, there is no fallback to the latest docs; the reply says "The version-specific docs for
+major N could not be fetched". Any other version keeps D-76's behaviour, now worded
+consequence-first (D5): `Not version-matched: you asked for <name> <version>, but VibeCTX has
+only the latest <name> docs for this library. Check APIs against <version>.` Every path where a
+version was requested and not matched ends its Source line with `· not version-matched`. The
+existing `· version <x>` field still means a confirmed exact match only.
+
+Shipped: prisma 6 and 7, ai-sdk 4 (`v4.ai-sdk.dev/llms.txt`). Versions are never read from a
+project manifest here; that is 2.0 work.
+
+Ref: `src/registry.ts` (`versionUrls`, `majorVersionSources`), `src/config.ts`,
+`src/get-docs.ts`; `test/par1269-version-note.test.ts`, `test/par1269-version-sources.test.ts`.
+
+## D-111 — exact section deduplication and the TanStack Query index, decided 2026-10-05 by Tom (PAR-1271, PAR-1272)
+
+Amends D-107 for TanStack Query: `https://tanstack.com/query/latest/llms.txt` is the first candidate. Every previous candidate remains in its original order as a fallback. Doctor probes `optimistic updates` and `query invalidation mutations`, covering three core topics; all three titles are present in the live Query index checked on 2026-10-05.
+
+Section selection skips a non-empty body byte-identical to one already chosen, before pricing it against the budget, then continues to the next section. Tom decided on 2026-10-06 (plan D13) that heading-only sections with empty bodies are never dropped as duplicates. It does not normalize case, whitespace, version paths or framework-specific content. Ranking, link selection, follow limits, the first-section guarantee and the byte caps are unchanged. The index's own link-list section can still consume the response budget; that remaining ranking issue belongs to 2.0.
+
+Tom chose to replace only the TanStack first-URL expectations in `test/par1032-index-disclosure.test.ts` and `test/registry-probes.test.ts`; their other checks stay. New tests prove exact equality, refilling the budget, preservation of distinct variants, and real followed-page rendering.
+
+Ref: `src/retrieval.ts`, the `tanstack-query` entry in `src/registry.ts`, `test/par1271-selection.test.ts`.
+
+## D-112 — decided 2026-10-05 by Tom, PAR-1268 (decision D4)
+
+Five names were built into VibeCTX through 0.1.2 and left the default registry in PAR-654
+(commit 2f64c5d, never published as 0.1.3): fastify, fastify-type-provider-zod, timescaledb,
+pgvector and aws-cdk. npm users went straight from 0.1.2 to 0.3.0, and the 0.3.0 upgrade notes
+did not list them. Looked up on npm or PyPI, three of them find a different package (a Python
+wrapper's README for timescaledb, pgvector-node for pgvector, the CDK CLI repository for
+aws-cdk).
+
+A fixed table (`RETIRED_BUILTINS`) now covers those five names in `get_docs`' unknown-name path
+only. When the name has no config entry, the reply says: "<name> was built into VibeCTX through
+0.1.2. To keep its curated sources, add it from <link to docs/examples/node-api-stack.vibectx.config.json>."
+All five get that notice once per process. fastify and fastify-type-provider-zod then resolve as
+before. timescaledb, pgvector and aws-cdk are never looked up, and no registry request is made:
+the first reply is the notice plus the reason no lookup is made, and later replies give the
+config link and that reason without repeating the notice. A record for one of those three that 0.3.0 already resolved and
+saved (`resolved.json`) is ignored on this path in the same way: no answer from it, the config
+fix instead (plan D11(c)). A config entry with one of these names is an ordinary entry, with no
+note. The note links the example config on GitHub, built from the one repository address
+(`src/repository.js`), because the npm package ships no `docs/` folder (plan D11(b)). The default registry stays at 30 entries, and `warm` and autowarm are unchanged (a
+project dependency is an explicit identity).
+
+Ref: `src/registry.ts` (`RETIRED_BUILTINS`, `retiredBuiltin`), `src/get-docs.ts`;
+`test/par1268-retired-builtins.test.ts`.
+
+
+## D-113 — decided 2026-10-05 by Tom, PAR-1269 (plan D9(c), B4)
+
+TanStack Query now lists `https://tanstack.com/query/v4/llms.txt` as its major-4 source, using the per-major field introduced by D-110. An explicit version in major 4 selects this source and reports a matched major, without claiming the exact requested version. Calls without a version and requests for an unlisted major retain the existing latest-source behavior. Project-manifest selection stays in 2.0.
+
+The v4 index was confirmed live on 2026-10-06: HTTP 200, 17,114 bytes. Tom chose to extend only the shipped-source set assertion in `test/par1269-version-sources.test.ts` to include `tanstack-query` (plan D11(d)); all other assertions in that file stay.
+
+Ref: the `tanstack-query` entry in `src/registry.ts`, `test/par1269-tanstack-v4.test.ts`.
+
+
+## D-114 — decided 2026-10-05 by Tom, PAR-1270 (option A, B2)
+
+A primary candidate rejected as too large during a fetch is now named when another document is served: “Skipped <URL>: larger than the 25 MiB limit; serving <URL> instead.” Multiple rejected candidates share one note. The note uses the source stamp's URL redaction and field bounds, and is priced in the existing reply header alongside the version and resolution notes. A stale cached copy states that it is served from cache.
+
+Doctor carries the same note as structured data across its probes and shows it once per distinct note in human output, including for a healthy fallback. The size skip is information, not a failed retrieval probe. It records a refusal observed during this call; it is not persisted or invented on a later cache-only call.
+
+The primary download cap (`PRIMARY_DOC_MAX_BYTES`) and cached-content cap (`MAX_CACHED_CONTENT_BYTES`) are unchanged. Candidate order, cache precedence, ranking, and followed-page limits are unchanged.
+
+The size notice is bounded to the existing 500-character note limit: complete skipped URLs are followed by the remaining count when needed. Small reply budgets use a complete count summary before sacrificing the answer; a notice that cannot fit alongside the mandatory source/version and minimum body is omitted from the diagnostic, with the bounded fact retained for doctor. Size-refused stale downloads say that no download succeeded and oversized documents were refused, rather than claiming the URLs were unreachable.
+
+Ref: `src/fetcher.ts`, the B2 note in `src/get-docs.ts`, `src/doctor.ts`, `test/par1270-size-skip.test.ts`.
+
+
+## D-115 — later releases and npm retirement, decided 2026-10-06 by Tom (plan D15, D16; D18 answered by Oversight under D17; amends D-108's practice)
+
+From 0.3.1 on, a release adds to the public repository instead of rebuilding it (`RELEASING.md` section 9). Every change merges first in the private repository. The release commit is the version bump on the private `main`. One commit is added on top of the current public `main`, built from `git archive` of the release commit, and proved before it is pushed: it starts at the current public `main`, it has exactly one parent, and its tree equals the release commit's tree. It lands through a pull request with a merge commit. Then come the tag, the GitHub Release and the npm publish, in that order, with the npm publish last because it cannot be undone.
+
+The owner is the BlackRaptorAI account holder, who alone holds the npm credentials, approves the public-repository pull request, tags, creates the GitHub Release and publishes. Builders never hold npm credentials.
+
+A published npm version is retired by deprecation only. A version is never unpublished, and `npm deprecate` is never chained with `npm unpublish`: unpublishing cannot be undone, breaks every pinned install, removes the deprecation message, and the version number can never be reused. An ordinary mistake is fixed by publishing a new version. The only exception is a security problem or a leaked secret, and then only with the owner's explicit approval for that version. D-108 records the one-time retirement of 0.1.2 and `@blackraptorai/docs-cache-mcp` on 2026-10-03, which used unpublish; this decision governs every later retirement.
+
+Ref: `RELEASING.md` section 9.
+
+
+## D-116 — same-name config override is stated, decided 2026-10-05 by Tom (PAR-1272 item 3, plan D10)
+
+A config entry with a built-in library's exact name still replaces the whole built-in entry: its URLs, description and probes. Only aliases are inherited when the entry omits them, and nothing is merged into the built-in's URL list. This semantics is unchanged.
+
+It is now stated. When the config loads, stderr gets one line per replaced built-in: `vibectx: <config>: "<name>" replaces the built-in entry of the same name (its URLs and probes are not merged)`. Each process loads the registry once, so the line prints once per process, not once per lookup. That library's first `get_docs` reply in the process carries the same note, naming only the config file's base name, so a tool reply never shows a local folder. An entry counts as replacing a built-in only when the name is a built-in and no earlier config layer already configured it.
+
+Ref: `applyLayer` in `src/registry.ts`; `src/get-docs.ts`; `test/cli.test.ts`; `docs/known-limitations.md` B-41.
+
+
+## D-117 — the size notice at small budgets, decided 2026-10-06 by Oversight under D17 (plan D23; clarifies D-114)
+
+D-114 says small budgets use a count summary "before sacrificing the answer". That holds above a narrow band of small budgets, not inside it. The size notice reserves room for the source and version metadata and for a minimum fenced-body floor, not for the complete matching section. At very small `maxTokens`, the notice can therefore displace substantive text, cutting a section that would otherwise fit, or cause an earlier refusal. Raising `maxTokens` restores the room.
+
+The existing tiny-budget stale-refusal class can exceed its character budget (`maxTokens × 4`). The longer size-refusal stale wording ("no download succeeded; oversized documents were refused") shifts that boundary slightly. No source or test changes with this entry, and D-114's text is unchanged. The singular wording for one skipped candidate is deferred to 2.0.
+
+Ref: D-114; `docs/known-limitations.md` B-43; `src/get-docs.ts`.
+
+
+## D-118 — bundled dependency security fixes before 0.3.1, decided 2026-10-06 by Tom (plan D26)
+
+Dependabot opened two runtime alerts on the 0.3.1 release candidate (`9e28dcb`). Both packages ship in the npm tarball through `bundleDependencies`:
+
+- `@modelcontextprotocol/sdk` 1.29.0, GHSA-6qxp-vccf-f47h (high): the OAuth client could send credentials to an authorization server chosen by the MCP server. Fixed by moving to 1.31.0.
+- `proxy-addr` 2.0.7, GHSA-jqcg-44mw-7w3h (critical): IP spoofing through an IPv4-mapped IPv6 trust subnet. It comes through `@modelcontextprotocol/sdk` → `express`. Fixed by the `overrides` entry `"proxy-addr": "^2.0.8"`, the same pattern as `fast-uri` and `ip-address` (D-108, B-27).
+
+VibeCTX's own code reaches neither vulnerable path. It imports only the SDK's `server/mcp`, `server/stdio` and `shared/transport`, and the 17 SDK files they import, in both versions, include neither `express` nor the OAuth client. The fix ships anyway, because a tarball that carries a flagged package is flagged by users' scanners whatever the reachability.
+
+Between 1.29.0 and 1.31.0, of the files VibeCTX reaches, `server/mcp.js`, `shared/transport.js`, `shared/protocol.js` and `types.js` are byte-identical. `server/stdio.js` and `shared/stdio.js` add a 10 MiB default limit on the inbound stdio read buffer: a larger message reports an error and closes the transport, where 1.29.0 buffered it without limit. `server/zod-compat.js` formats schema validation errors as every issue with its path, instead of only the first message. `server/index.js` refactors how the method literal is read. The development-only `source-map-js` is moved from 1.2.1 to 1.2.2 (GHSA-68fv-2mgg-jv7q) by the lockfile alone; it is not shipped.
+
+Ref: `package.json`; `package-lock.json`; `test/dependency-security-031.test.ts`.

@@ -38,8 +38,14 @@ function cacheFolders(env: NodeJS.ProcessEnv, home: string): string[] {
   return [...folders];
 }
 
-/** Decision 10: the copy-paste repair command keeps the real cache path on the user's terminal. */
+/** D3 amends decision 10: only a real terminal may receive the literal repair path. */
 const VERBATIM_LINE = /^chmod 700 '/;
+export function cachePermissionRepair(folder: string, isTTY = process.stderr.isTTY === true): string {
+  return isTTY
+    ? `chmod 700 '${folder.replace(/'/g, "'\\''")}'`
+    : 'chmod 700 "$VIBECTX_CACHE_DIR"\n' +
+      "Use the folder set as VIBECTX_CACHE_DIR in your VibeCTX or MCP config, shown above as [cache].";
+}
 /** Remembered warnings are bounded; past the bound a warning is still written, just not remembered. */
 const MAX_REMEMBERED_WARNINGS = 1024;
 const writtenWarnings = new Set<string>();
@@ -47,14 +53,17 @@ const writtenWarnings = new Set<string>();
 /**
  * PAR-1044 L-5: the stderr sink for best-effort warnings. The cache folder is shown as `[cache]`
  * and the home folder as `~` (MCP hosts may keep stderr), and an identical warning is written
- * once per process. A `chmod 700 '…'` repair line is kept verbatim (decision 10). Like the
+ * once per process. A `chmod 700 '…'` repair line is kept verbatim only on a real terminal.
+ * Non-terminal sinks receive the configuration-variable repair form (D3). Like the
  * `process.stderr.write` defaults it replaces, a throwing stream is left to the caller.
  */
-export function writeStderrWarning(message: string, env: NodeJS.ProcessEnv = process.env): void {
+export function writeStderrWarning(message: string, env: NodeJS.ProcessEnv = process.env, isTTY = process.stderr.isTTY === true): void {
   const home = homedir();
   const folders = cacheFolders(env, home);
   const text = message.replace(/\n+$/, "").split("\n")
-    .map((line) => VERBATIM_LINE.test(line) ? line : redactFolders(line, folders, home))
+    .map((line) => VERBATIM_LINE.test(line)
+      ? (isTTY ? line : cachePermissionRepair("", false))
+      : redactFolders(line, folders, home))
     .join("\n");
   if (writtenWarnings.has(text)) return;
   if (writtenWarnings.size < MAX_REMEMBERED_WARNINGS) writtenWarnings.add(text);

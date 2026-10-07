@@ -278,7 +278,7 @@ describe("dispatchCli", () => {
     );
     expect(code).toBe(0);
     expect(a.out.join("")).toContain("1/1 libraries healthy");
-    expect(a.err).toEqual([]);
+    expect(a.err).toEqual([`vibectx: ${config}: "react" replaces the built-in entry of the same name (its URLs and probes are not merged)\n`]);
   });
 
   it("a missing config before the doctor token is the doctor's exit 2, not a server-path crash", async () => {
@@ -363,7 +363,7 @@ describe("dispatchCli", () => {
     expect(text).toMatch(/react\s+full-text\s+0\.0h\s+answered\s+0\/0\s+✓/);
     expect(text).toContain('\n```\n"useEffect cleanup"\n```');
     expect(text).toContain("1/1 libraries healthy");
-    expect(a.err).toEqual([]);
+    expect(a.err).toEqual([`vibectx: ${config}: "react" replaces the built-in entry of the same name (its URLs and probes are not merged)\n`]);
   });
 
   it("exits 2 with usage on a bad flag", async () => {
@@ -574,7 +574,7 @@ describe("dispatchCli warm (PAR-656)", () => {
     expect(text).toMatch(/^vibectx warm · /);
     expect(text).toMatch(/\nreact\s+react\s+cached\s+https:\/\/react\.dev\/llms-full\.txt\n/);
     expect(text).toContain("1/1 dependencies cached · 1 denied (noise list)");
-    expect(a.err).toEqual(["Network access disclosure: this command may download public docs from configured and package-provided documentation sites (including GitHub). Resolving an unknown package or warming a project sends requested package and dependency names and pinned versions to npm/PyPI registries; those names may be private. Results are cached locally. Run vibectx consent reset to change this answer.\n"]);
+    expect(a.err).toEqual([`vibectx: ${config}: "react" replaces the built-in entry of the same name (its URLs and probes are not merged)\n`, "Network access disclosure: this command may download public docs from configured and package-provided documentation sites (including GitHub). Resolving an unknown package or warming a project sends requested package and dependency names and pinned versions to npm/PyPI registries; those names may be private. Results are cached locally. Run vibectx consent reset to change this answer.\n"]);
     expect(existsSync(join(dir, "projects"))).toBe(true);
   });
 
@@ -714,7 +714,7 @@ describe("CLI config discovery: no flag needed (PAR-657)", () => {
   it("D-19: a broken DISCOVERED file is skipped — doctor still runs, warns once, and is unhealthy", async () => {
     writeCache("react", REACT_URL, REACT_DOC);
     writeFileSync(join(repo, "vibectx.config.json"), '{ "libraries": [{ "name": "a", "urls": [] }] }', "utf8");
-    const a = io();
+    const a = { ...io(), stdoutIsTTY: true }; // This scenario checks terminal diagnostics.
     // Without the broken file this run is exit 0 (one healthy library); the skipped config
     // is what makes it 1 — and the run happens at all, which is the point of D-19.
     expect(await dispatchCli(["node", "dist/index.js", "doctor", "--library", "react", "--offline"], a)).toBe(1);

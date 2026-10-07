@@ -46,8 +46,10 @@ server contacts no package registry. On a stock Node install the global prefix i
 root-owned: use `sudo`, or first set a user-owned prefix (`npm config set prefix ~/.npm-global`
 and put `~/.npm-global/bin` on your PATH). Install it once rather than launching it through
 `npx`. npx runs a copy installed in the project first; otherwise it installs the package into
-npm's cache, which can contact the registry, and `npx --offline` works only when the package
-is already cached ([npm exec](https://docs.npmjs.com/cli/v11/commands/npm-exec/)). Update with
+npm's cache, which can contact the registry ([npm exec](https://docs.npmjs.com/cli/v11/commands/npm-exec/)).
+Even when the package is already in npm's cache, a plain `npx` launch still checks the npm
+registry for the package's metadata. The no-network form is `npx --offline @blackraptorai/vibectx@0.3.1`,
+which works only when that exact version is already in npm's cache. Update with
 `npm install -g @blackraptorai/vibectx@latest`.
 
 ### From source
@@ -72,8 +74,10 @@ Building alone does not mark `dist/index.js` executable. `npm link` or install p
 
 That is the whole install. `dist/index.js` is now the server, and launching it contacts no
 package registry — which is the point. Launching through `npx` without a local install would
-make the server's start depend on npm's cache, and on the registry whenever the package is not
-cached; a docs cache whose own launch depends on the network would defeat itself.
+make the server's start depend on npm's cache and on the npm registry: a plain `npx` launch
+checks the registry for metadata even when the package is cached, and only
+`npx --offline @blackraptorai/vibectx@0.3.1` avoids the network (and only once that version is
+cached). A docs cache whose own launch depends on the network would defeat itself.
 
 To use the `vibectx` CLI (every command example below assumes it is on your PATH):
 
@@ -106,11 +110,11 @@ with its release URL; errors and same/older versions produce no notice. No updat
 automatically. A config file can also set `"checkUpdates": false` to override the environment.
 
 > **On pinning:** for a source install, the tag *is* the release artifact.
-> `git checkout v0.3.0` pins your clone to this release; staying on `main`
+> `git checkout v0.3.1` pins your clone to this release; staying on `main`
 > instead tracks unreleased changes as they land. To move a pinned clone to a newer
 > release, `git fetch --tags` and check out the newer tag, then re-run
 > `npm ci && npm run build` — `dist/` is gitignored, so checking out a tag alone leaves
-> the old build in place. From npm, `npm install -g @blackraptorai/vibectx@0.3.0` pins the
+> the old build in place. From npm, `npm install -g @blackraptorai/vibectx@0.3.1` pins the
 > same release.
 
 ## Quickstart
@@ -196,7 +200,7 @@ link alone leaves the data on disk; removing cache data makes a later install st
 | Tool | What it does |
 |---|---|
 | `list_libraries()` | Registry + per-library cache status |
-| `get_docs(library, topic?, maxTokens?, mode?, version?)` | Fetch-or-cache, then return the sections best matching `topic`, ranked by BM25 (follows llms.txt index links when needed). `mode: "snippets"` returns just the code blocks. No topic → table of contents + document head. `version` matches docs to an exact release — falls back to the latest available document if none is found, and always says so; see [Version-matched docs](#version-matched-docs) |
+| `get_docs(library, topic?, maxTokens?, mode?, version?)` | Fetch-or-cache, then return the sections best matching `topic`, ranked by BM25 (follows llms.txt index links when needed). `mode: "snippets"` returns just the code blocks. No topic → table of contents + document head. `version`: a resolved package matches the exact release, or falls back to latest and says so; a curated entry matches only a listed major, otherwise it serves latest docs marked not version-matched; a listed major whose sources fail with nothing cached does not fall back to latest. See [Version-matched docs](#version-matched-docs) |
 | `search(query, maxTokens?, libraries?)` | Search **every cached library at once** and get the best sections grouped by library — for when you don't know which library owns a concept. Cache-only and offline; for a library whose docs are an index of links, this only searches that index — `get_docs` also follows its links, this tool does not; see [Don't know which library? `search`](#dont-know-which-library-search) |
 | `refresh(library?)` | Force revalidation past the TTL (all libraries when omitted; a resolved entry is re-resolved). A changed (200) refresh drops that library's other cached pages — the ones followed from links in the document being replaced — so a later `get_docs` re-follows fresh links rather than blending old followed pages into new content. A 304 revalidation keeps them. Dropped pages are re-fetched the next time `get_docs` follows a link online; until then, an offline read or an upstream outage reports them as unavailable rather than serving the older copy. Omitting `library` (a full refresh of everything) is capped at a few calls per hour per running server; a call past the cap is refused with a stated reason. Refreshing one named library at a time has no such cap |
 | `resolve_library(name, ecosystem?)` | Turn any npm / PyPI package name into a docs source and report how — see [Any library, no config](#any-library-no-config) |
@@ -220,9 +224,10 @@ topics have their documented limits, and `warm_project.dir` is at most 4,096 cha
 over-limit value is an input-validation error, not a silently truncated request. This is
 application-level defense in depth, not a stdio transport DoS boundary: the installed MCP SDK's
 `StdioServerTransport` accepts JSON-RPC bytes into its read buffer before Zod validates a tool
-argument and exposes no inbound-message-size option. Run VibeCTX only behind an MCP client you
-trust to bound requests; this limitation is tracked as a release residual rather than claimed
-away.
+argument. Since SDK 1.30.0 that read buffer is capped at 10 MiB by default (a larger message
+closes the connection), and VibeCTX does not set a smaller limit. Run VibeCTX only behind an
+MCP client you trust to bound requests; this limitation is tracked as a release residual
+rather than claimed away.
 
 ## Command line
 
@@ -278,6 +283,13 @@ consent as `cli`, so an MCP host that can ask will not ask later; run `vibectx c
 check runs only when consent is allowed, never after a disclosure or a decline. If consent is denied or reset during background revalidation, later entries and lookups are not
 started; one already in flight may finish. Set `VIBECTX_NO_AUTOWARM=1` to disable background
 revalidation entirely.
+
+**Unattended setups** (CI, a container, a cloud agent, any host that cannot show the request):
+decide before the server starts. Run `vibectx consent allow` (or `vibectx consent deny`) with
+the same `VIBECTX_CACHE_DIR` the server will use; the answer is stored in that cache root's
+`consent.json`, so a fresh or throwaway cache root needs the command again. Without a stored
+answer, a host that cannot ask gets the one-time disclosure above and proceeds online. There is
+no environment variable for consent.
 
 When a match contains only an index page's own text, get_docs says
 "matched the index page's own text; no linked page was followed". If a linked page was followed
@@ -1138,8 +1150,10 @@ do not rely on resolution.
 
 ## Version-matched docs
 
-Pass `version` to `get_docs` to match documentation to an exact release instead of
-whatever the resolution chain would otherwise land on:
+Pass `version` to `get_docs` to match documentation to the version you use. A resolved
+package is matched to its exact release. A curated entry is matched only by major, and only
+where it lists sources for that major (see **Per-major sources** below); otherwise it serves
+the latest docs, marked not version-matched:
 
 ```jsonc
 // tool call
@@ -1170,14 +1184,22 @@ Source: https://example.com/llms.txt · fetched <ISO timestamp> · fresh · reso
 ```
 
 **A curated entry** (the default registry, or one pinned in your config) is never
-re-resolved for a version — its `urls` are hand-picked doc sources, not derived from
-registry metadata, so there is no version-specific candidate to try. The response says so
-explicitly and still serves the entry's normal (unversioned) document:
+re-resolved for a version. When it has no version-specific source for the version you asked
+for, the response says so first and still serves the entry's latest document, and the
+`Source:` line ends with `· not version-matched` (on every path where a version was requested
+and not matched):
 
 ```
-Version 1.2.3 was requested, but "react" is a curated entry — version-matching applies only to packages resolved automatically.
-Source: https://react.dev/llms.txt · fetched <ISO timestamp> · fresh · curated
+Not version-matched: you asked for react 1.2.3, but VibeCTX has only the latest react docs for this library. Check APIs against 1.2.3.
+Source: https://react.dev/llms.txt · fetched <ISO timestamp> · fresh · curated · not version-matched
 ```
+
+**Per-major sources.** A curated entry may list sources per major version in `versionUrls`
+(`{ "6": ["https://www.prisma.io/docs/llms/orm-v6.txt"] }`, https only, validated like `urls`).
+An explicit `version` whose major is listed is served from those sources, and the reply says
+`Version-matched: major 6 (from <url>)`. If they cannot be fetched and nothing is cached, the
+reply says the version-specific docs for that major could not be fetched; it does not fall
+back to the latest docs. Shipped: prisma 6 and 7, ai-sdk 4, and TanStack Query 4.
 
 `vibectx warm` also matches a manifest's pinned version when it names one unambiguously —
 a bare semver (`"1.2.3"`, package.json), a PEP 508 `==` pin (`django==4.2.3`,
@@ -1305,7 +1327,8 @@ if the cache root, or an individual library's own directory inside it, is a syml
 real directory, vibectx refuses to read or write through it — nothing is served from the far
 side of the link, and nothing is created there either — and says so once on stderr, rather than
 silently following it. `doctor` also names a refused root and its full path in the human
-terminal output. The MCP `doctor` and `list_libraries` responses show the refusal but redact
+output when stdout is a real terminal (TTY); piped or captured output shows `cache [redacted]`
+instead. The MCP `doctor` and `list_libraries` responses show the refusal but redact
 the path; `doctor --json` redacts it by default, with `--show-cache-path` as an explicit
 full-path opt-in. A symlinked **ancestor** of an explicitly configured cache root is an
 intentional setup (such as macOS's `/var` → `/private/var`): vibectx resolves the existing prefix
@@ -1374,9 +1397,11 @@ not implement owner/group/other file permissions the same way, so `0700`/`0600` 
 meaningful there in the way they are here; this project's own CI runs only on `ubuntu-24.04`, so
 the exact-mode guarantee above is verified there, not on Windows.)
 
-The copy-paste chmod command includes the real cache path only on your terminal
-(stderr or CLI output). MCP tool replies keep local paths redacted. The terminal
-command is shell-quoted so spaces and quotes in the path remain literal.
+The copy-paste chmod command includes the real cache path only when stderr is a real terminal
+(TTY). Anywhere else (an MCP host's log, a pipe, an agent's shell tool) it reads
+`chmod 700 "$VIBECTX_CACHE_DIR"`, followed by a line saying to use the folder set as
+`VIBECTX_CACHE_DIR` in your VibeCTX or MCP config, shown above as `[cache]`. MCP tool replies keep local paths redacted. On a terminal
+the command is shell-quoted so spaces and quotes in the path remain literal.
 
 Other warnings on stderr show the cache folder as `[cache]` and your home folder as `~`, and
 each distinct warning is printed once per process, up to the first 1,024 distinct warnings
@@ -1633,10 +1658,14 @@ overrides `next.js`. Precedence:
 
 **Keep a private stack via committed config.** The default registry is what most teams
 share; what only *your* team uses belongs in a `vibectx.config.json` committed to your
-repo, so every teammate's agent gets byte-identical context. Config entries merge over
-the defaults. [`docs/examples/node-api-stack.vibectx.config.json`](docs/examples/node-api-stack.vibectx.config.json)
-is a complete example — the Fastify / TimescaleDB / pgvector / AWS CDK stack that shipped
-as the default registry through 0.1.3:
+repo, so every teammate's agent gets byte-identical context. A config entry with a new name
+adds a library. A config entry with the **same name** as a built-in **replaces the whole
+built-in entry**: its URLs, description and probes; only aliases are inherited when you omit
+them. Nothing is merged into the built-in's URL list.
+VibeCTX says so once on stderr when the config loads, and once in that library's first
+`get_docs` reply. [`docs/examples/node-api-stack.vibectx.config.json`](docs/examples/node-api-stack.vibectx.config.json)
+is a complete example: the Fastify / TimescaleDB / pgvector / AWS CDK /
+fastify-type-provider-zod stack that shipped as the default registry through 0.1.2:
 
 ```bash
 vibectx --config ./docs/examples/node-api-stack.vibectx.config.json doctor
@@ -1746,6 +1775,14 @@ Config contents written for 0.1.3 still load when passed with `--config`, subjec
 0.3.0; rename that file to `vibectx.config.json` before upgrading. Explicit `--config` paths
 still work regardless of the filename.
 
+- **Breaking: five built-in libraries were removed.** `fastify`, `fastify-type-provider-zod`,
+  `timescaledb`, `pgvector` and `aws-cdk` were built in through 0.1.2 and are not in 0.3.x's
+  default registry. To keep their curated sources, add them from the example config:
+  https://github.com/BlackRaptorAI-Labs/VibeCTX/blob/main/docs/examples/node-api-stack.vibectx.config.json
+  Without a config entry, `get_docs` says once per process that the name was built in through
+  0.1.2 and links that file. `fastify` and `fastify-type-provider-zod` then resolve from npm as
+  any unknown name does. `timescaledb`, `pgvector` and `aws-cdk` are not looked up, because the
+  registry lookup finds a different package, and a record 0.3.0 saved for them is ignored.
 - **Breaking:** every URL in `urls` must be `https:`. The fetcher has always refused
   anything else, so an `http:` entry could never have served a document — but it used to
   load quietly and now names itself at startup. Change the URL to `https:` (or drop the
@@ -2150,10 +2187,12 @@ actually did reads this the same way it reads `warm --json`.
   best-matching links — absolute or relative — are fetched (and cached) one level deep:
   up to 3 links, or 5 when the index has more than 200. Each followed page is capped at
   2 MiB (larger responses are dropped, not cached), and no new fetch starts once ~2 MB of
-  followed content has accumulated. Primary documents are capped at 25 MiB. Only `https`
-  links on the source document's host or the entry's `allowedHosts` are followed, checked
-  again after redirects; skipped, oversize or unreachable links are reported in the
-  response rather than dropped silently.
+  followed content has accumulated. Primary documents are capped at 25 MiB; a primary
+  candidate refused for size is named in the `get_docs` reply (a bounded notice, left out
+  when the budget is too small) and in `vibectx doctor`, and the next candidate is used.
+  Only `https` links on the source document's host or the entry's `allowedHosts` are
+  followed, checked again after redirects; skipped, oversize or unreachable links are
+  reported in the response rather than dropped silently.
 - **Cross-library search:** `search(query)` runs one BM25 query over every cached
   document and groups the hits by library, for the common case where the agent does not
   know which library owns a concept. Cache-only and offline; backed by a derived,
@@ -2229,7 +2268,7 @@ Re-run the local scale probe for a current number; they are not promises about a
 
 ## Development
 
-0.3.0 verification: **2,682 tests in 105 files**. This count comes from Vitest collection;
+0.3.1 verification: **2,798 tests in 115 files**. This count comes from Vitest collection;
 `test/readme-final.test.ts` fails if the documented test or file count drifts.
 
 ```bash

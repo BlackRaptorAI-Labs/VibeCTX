@@ -125,6 +125,8 @@ export interface LibraryReport {
   healthy: boolean;
   /** Why the library is unhealthy; empty when healthy. */
   reasons: string[];
+  /** PAR-1270: size skips observed during this run; informative, not a failed probe. */
+  sizeSkipNotes?: string[];
 }
 
 /** Bumped when a key is renamed, removed or changes meaning. New keys may be
@@ -284,6 +286,7 @@ async function checkLibrary(entry: LibraryEntry, offline: boolean, lookup?: Addr
 async function checkLibraryUnguarded(entry: LibraryEntry, offline: boolean, lookup?: AddressLookup, maxTokens?: number): Promise<LibraryReport> {
   const ttlHours = entry.ttlHours ?? DEFAULT_TTL_HOURS;
   const probes: ProbeResult[] = [];
+  const sizeSkipNotes = new Set<string>();
   let source: { url: string; stale: boolean; finalUrl?: string } | undefined;
   let isIndex = false;
 
@@ -296,6 +299,7 @@ async function checkLibraryUnguarded(entry: LibraryEntry, offline: boolean, look
       break;
     }
     source = out.source;
+    if (out.source.primarySizeSkipNote !== undefined) sizeSkipNotes.add(out.source.primarySizeSkipNote);
     isIndex = out.isIndex;
     // PAR-844 — the fourth branch: `out.matched > 0` but `out.returnedFromFollowed === 0` on an
     // INDEX-ONLY source means every returned section came from the index document itself, never
@@ -405,6 +409,7 @@ async function checkLibraryUnguarded(entry: LibraryEntry, offline: boolean, look
     dropped,
     healthy: reasons.length === 0,
     reasons,
+    ...(sizeSkipNotes.size > 0 ? { sizeSkipNotes: [...sizeSkipNotes] } : {}),
   };
 }
 
@@ -603,6 +608,9 @@ export function formatDoctorTable(report: DoctorReport, opts: { verbose?: boolea
     `${report.healthy}/${report.total} libraries healthy`,
   ];
   const unhealthy = report.libraries.filter((lib) => !lib.healthy);
+  for (const lib of report.libraries) {
+    for (const note of lib.sizeSkipNotes ?? []) lines.push(cleanText(`note: ${lib.library}: ${note}`));
+  }
   // PAR-1033: keep status columns single-line. Echo each probe on separate fenced lines;
   // format the same raw query in reason strings through that boundary as well.
   for (const lib of shownLibraries) {

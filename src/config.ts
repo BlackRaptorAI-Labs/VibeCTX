@@ -317,6 +317,16 @@ export function configLocator(index: number, field: string, name?: unknown): str
 export const MAX_URLS_PER_CONFIG_ENTRY = 50;
 
 const URLS_MESSAGE = `must be a non-empty array of at most ${MAX_URLS_PER_CONFIG_ENTRY} https URLs`;
+/** PAR-1269 (D6): `versionUrls` reuses the `urls` bound for both the number of majors and each
+ *  major's list — no new limit. Keys are whole major numbers ("6", never "6.x" or "06"). */
+const VERSION_URLS_MESSAGE = `must map whole major numbers ("6") to non-empty arrays of at most ${MAX_URLS_PER_CONFIG_ENTRY} https URLs, for at most ${MAX_URLS_PER_CONFIG_ENTRY} majors`;
+const MAJOR_KEY = /^(0|[1-9][0-9]*)$/;
+const isUrlList = (v: unknown): boolean => Array.isArray(v) && v.length > 0 && v.length <= MAX_URLS_PER_CONFIG_ENTRY && v.every(isNonEmptyString);
+const isVersionUrls = (v: unknown): boolean => {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const entries = Object.entries(v as Record<string, unknown>);
+  return entries.length > 0 && entries.length <= MAX_URLS_PER_CONFIG_ENTRY && entries.every(([key, list]) => MAJOR_KEY.test(key) && isUrlList(list));
+};
 const STRINGS_MESSAGE = "must be an array of non-empty strings";
 const LIBRARIES_MESSAGE = "must be an array of library entries";
 const TTL_MESSAGE = "must be a number of hours, 0 or greater (0 = always revalidate)";
@@ -357,10 +367,9 @@ const EntrySchema = z
     // Shape only here (non-empty array of non-empty strings): the URL trust decision itself
     // — https-only, no userinfo, host not forbidden — is D-49's `validateLibraryUrl`, applied
     // per-entry below so it can see `allowInternalHosts`. Never re-implement a subset of it here.
-    urls: z.custom<string[]>(
-      (v) => Array.isArray(v) && v.length > 0 && v.length <= MAX_URLS_PER_CONFIG_ENTRY && v.every(isNonEmptyString),
-      URLS_MESSAGE,
-    ),
+    urls: z.custom<string[]>(isUrlList, URLS_MESSAGE),
+    // PAR-1269 (D6): shape here; each URL clears the same `validateLibraryUrl` as `urls` below.
+    versionUrls: z.custom<Record<string, string[]>>(isVersionUrls, VERSION_URLS_MESSAGE).optional(),
     aliases: z.custom<string[]>(isStringList, STRINGS_MESSAGE).optional(),
     probeQueries: z.custom<string[]>(isStringList, STRINGS_MESSAGE)
       .transform((queries) => queries.map((query) => clipText(cleanText(query), MAX_TOPIC_CHARS)))
@@ -416,6 +425,17 @@ const EntrySchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["urls", i], message: `"${shown}" ${why}` });
       }
     });
+    // PAR-1269 (D6): the same URL trust decision, the same redacted diagnostic.
+    for (const [major, list] of Object.entries(entry.versionUrls ?? {})) {
+      list.forEach((raw, i) => {
+        try {
+          validateLibraryUrl(raw, { allowInternalHosts: entry.allowInternalHosts });
+        } catch (err) {
+          const shown = clipText(redactUrlForDisplay(raw), MAX_CONFIG_VALUE_CHARS);
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["versionUrls", major, i], message: `"${shown}" ${whyUrlRefused(err, raw)}` });
+        }
+      });
+    }
   });
 
 /** Unknown TOP-LEVEL keys (`$comment`, `$schema`) are ignored the same way. D-21: `libraries`

@@ -11,10 +11,10 @@ it("PAR-1036: public limitations contain user impact workaround and decision ref
     expect(document).not.toContain(obsolete);
   const limitations = document.split("## Supported scope")[0];
   const rows = limitations.split("\n").filter((line) => /^\| (?:B-\d{2}|D-9[678]|Project config|Concurrent warm|Log rotation|Update check|CLI consent|Partial eviction|Autowarm|Activity append|Temporary-file sweep|Legacy cache integrity) \|/.test(line));
-  expect(rows).toHaveLength(51);
+  expect(rows).toHaveLength(56);
   const ids = rows.map((line) => line.split("|")[1].trim());
   expect(new Set(ids).size).toBe(rows.length);
-  expect([...ids].sort()).toEqual([...Array.from({ length: 38 }, (_, n) => `B-${String(n + 1).padStart(2, "0")}`), "D-96", "D-97", "D-98", "Project config", "Concurrent warm", "Log rotation", "Update check", "CLI consent", "Partial eviction", "Autowarm", "Activity append", "Temporary-file sweep", "Legacy cache integrity"].sort());
+  expect([...ids].sort()).toEqual([...Array.from({ length: 43 }, (_, n) => `B-${String(n + 1).padStart(2, "0")}`), "D-96", "D-97", "D-98", "Project config", "Concurrent warm", "Log rotation", "Update check", "CLI consent", "Partial eviction", "Autowarm", "Activity append", "Temporary-file sweep", "Legacy cache integrity"].sort());
   for (let n = 1; n <= 38; n++) expect(ids).toContain(`B-${String(n).padStart(2, "0")}`);
   for (const line of rows) {
     const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
@@ -77,7 +77,7 @@ it("PAR-1036: every limitations row parses in one uninterrupted six-column table
   });
   expect(rows[0]).toEqual(["ID", "User impact", "Decision / source", "Current behavior", "Scope", "Workaround"]);
   expect(rows[1].every((cell) => /^:?-{3,}:?$/.test(cell))).toBe(true);
-  expect(rows.slice(2)).toHaveLength(51);
+  expect(rows.slice(2)).toHaveLength(56);
   expect(rows.at(-1)?.[0]).toBe("Legacy cache integrity");
 });
 

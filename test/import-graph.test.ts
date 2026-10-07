@@ -382,7 +382,9 @@ function reaches(graph: Pick<Graph, "edges">, from: string, to: string): boolean
 // L-33 (I-29 integration pass) adds activity-log, search, search-index and project-store →
 // package-names.ts: the 214-character name bound is written once, as MAX_NAME_LENGTH, +4.
 // PAR-1050 adds bug-report, cli, server, update-check and version -> repository.js, +5.
-const MEASURED_EDGE_COUNT = 213;
+// PAR-1268 (plan D11(b)) adds get-docs.ts -> repository.js: the retired-name note links the example
+// config from the one repository address, +1.
+const MEASURED_EDGE_COUNT = 214;
 const EDGE_COUNT_FLOOR = 100;
 
 describe("import graph: non-vacuity (a resolver that silently drops edges must be caught)", () => {

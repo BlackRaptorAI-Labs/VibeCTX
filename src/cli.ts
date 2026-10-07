@@ -70,6 +70,8 @@ export interface LogCliArgs {
 export interface CliIo {
   stdout(s: string): void;
   stderr(s: string): void;
+  /** Test/client seam; absent uses the real process stdout terminal state. */
+  stdoutIsTTY?: boolean;
   /** Human confirmation after the preview; absent means no link can be generated. */
   confirm?(question: string): Promise<boolean>;
 }
@@ -330,7 +332,7 @@ export async function runDoctorCli(args: string[], io: CliIo): Promise<number> {
   const presented = parsed.showCachePath && report.cacheRoot
     ? { ...report, cacheRoot: { ...report.cacheRoot, path: cacheRoot() } }
     : report;
-  io.stdout(parsed.json ? `${JSON.stringify(presented, null, 2)}\n` : `${formatDoctorTable(report, { verbose: parsed.verbose })}\n`);
+  io.stdout(parsed.json ? `${JSON.stringify(presented, null, 2)}\n` : `${formatDoctorTable(report, { verbose: parsed.verbose, redactCachePath: (io.stdoutIsTTY ?? process.stdout.isTTY) !== true })}\n`);
   return doctorExitCode(report);
 }
 

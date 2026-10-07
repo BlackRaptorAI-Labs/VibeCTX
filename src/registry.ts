@@ -13,7 +13,7 @@ import { clipText, envFlag } from "./text.js";
 import { fenceEchoedIdentifier } from "./retrieval.js";
 import { normaliseAllowedHost } from "./link-policy.js";
 import { mergedVersionedDocuments, readResolvedEntries } from "./resolved-store.js";
-import { isExactVersionTagUrl, normalisePyPiName, MAX_NAME_LENGTH } from "./package-names.js";
+import { isExactVersionTagUrl, normalisePyPiName, MAX_NAME_LENGTH, VERSION_SHAPE } from "./package-names.js";
 
 /** Provenance of an entry synthesized by resolve_library (PAR-655). Set only by the
  *  resolver and the persisted store; stripped from config entries. */
@@ -43,6 +43,16 @@ export interface LibraryEntry {
   aliases?: string[];
   /** Ordered candidate URLs. First reachable one wins. Prefer llms-full.txt, then llms.txt, then curated pages. */
   urls: string[];
+  /** PAR-1269 (D6) — candidate URLs per MAJOR version, keyed by the major as a whole number
+   *  (`{ "6": [...] }`). Used only when `get_docs` is given an explicit `version` whose major is
+   *  listed; those URLs then replace `urls` as the candidate list for that call. Never read for
+   *  a call without `version`, and never derived from a project manifest. Same URL policy as
+   *  `urls` (config.ts). */
+  versionUrls?: Record<string, string[]>;
+  /** PAR-1272 (decided 2026-10-05) — set by `applyLayer`, never by a config author (the config
+   *  schema strips unknown keys, and `normaliseLayer` drops it): the display name of the config
+   *  file whose entry replaced the built-in entry of this exact name. `get_docs` states it once. */
+  replacedBuiltin?: string;
   /** Cache time-to-live in hours. Default 168 (7 days). */
   ttlHours?: number;
   /** One-line description shown by list_libraries. */
@@ -102,6 +112,45 @@ export interface LibraryEntry {
 export function entryForVersion(entry: LibraryEntry, version: string): LibraryEntry | undefined {
   const document = entry.versionedDocuments?.find((candidate) => candidate.version === version && isExactVersionTagUrl(version, candidate.url));
   return document ? { ...entry, urls: [document.url] } : undefined;
+}
+
+/** PAR-1269 (D6): the whole-number major of a requested version (`6.19.2`, `v6.0.0` → "6"), or
+ *  undefined when the version fails `VERSION_SHAPE` (D-48: the one version shape) or does not
+ *  start with a number. */
+function requestedMajor(version: string): string | undefined {
+  if (!VERSION_SHAPE.test(version)) return undefined;
+  const m = /^v?(0|[1-9][0-9]*)(?:[.+_-]|$)/i.exec(version);
+  return m?.[1];
+}
+
+/** PAR-1269 (D6, amends D-76): the sources a curated entry lists for the requested version's
+ *  major (`versionUrls`), or undefined when it lists none for that major. */
+export function majorVersionSources(entry: LibraryEntry, version: string): { major: string; urls: string[] } | undefined {
+  const major = requestedMajor(version);
+  if (major === undefined || entry.versionUrls === undefined || !Object.hasOwn(entry.versionUrls, major)) return undefined;
+  const urls = entry.versionUrls[major];
+  return urls !== undefined && urls.length > 0 ? { major, urls } : undefined;
+}
+
+/** PAR-1268 (D4, decided 2026-10-05) — the five names built into VibeCTX through 0.1.2 and moved
+ *  to `docs/examples/node-api-stack.vibectx.config.json` (PAR-654). Read only by `get_docs`' unknown-name
+ *  path: a config entry with one of these names is an ordinary entry, and `warm`/autowarm never
+ *  consult this table (a project dependency is an explicit identity). `resolves: false` names are
+ *  never looked up on npm or PyPI, because that lookup finds a different package (a Python
+ *  wrapper for timescaledb, pgvector-node, the CDK CLI repository for aws-cdk). */
+export const RETIRED_BUILTINS: Readonly<Record<string, { readonly resolves: boolean }>> = Object.freeze({
+  fastify: { resolves: true },
+  "fastify-type-provider-zod": { resolves: true },
+  timescaledb: { resolves: false },
+  pgvector: { resolves: false },
+  "aws-cdk": { resolves: false },
+});
+
+/** The retired built-in a requested name refers to (registry folding: case and surrounding
+ *  spaces), or undefined. */
+export function retiredBuiltin(name: string): { name: string; resolves: boolean } | undefined {
+  const key = name.trim().toLowerCase();
+  return Object.hasOwn(RETIRED_BUILTINS, key) ? { name: key, resolves: RETIRED_BUILTINS[key]!.resolves } : undefined;
 }
 
 /*
@@ -230,6 +279,8 @@ export const DEFAULT_REGISTRY: LibraryEntry[] = [
       "https://ai-sdk.dev/docs/llms.txt",
       "https://raw.githubusercontent.com/vercel/ai/main/packages/ai/README.md",
     ],
+    // PAR-1269 (D6): the v4 docs site (checked live 2026-10-05: 200, text/plain, 789,157 bytes).
+    versionUrls: { "4": ["https://v4.ai-sdk.dev/llms.txt"] },
     description: "Vercel AI SDK (npm `ai`) — streamText, generateObject, useChat",
     probeQueries: ["streamText tool calling", "useChat hook"],
   },
@@ -264,6 +315,13 @@ export const DEFAULT_REGISTRY: LibraryEntry[] = [
       "https://www.prisma.io/docs/llms.txt",
       "https://raw.githubusercontent.com/prisma/prisma/main/README.md",
     ],
+    // PAR-1269 (D6): Prisma's own per-major indexes, linked from its docs/llms.txt (checked live
+    // 2026-10-05: orm-v6.txt 200, 36,838 bytes; orm-v7.txt 200, 40,461 bytes). llms-full.txt has
+    // no v6 pages at all.
+    versionUrls: {
+      "6": ["https://www.prisma.io/docs/llms/orm-v6.txt"],
+      "7": ["https://www.prisma.io/docs/llms/orm-v7.txt"],
+    },
     description: "Prisma ORM documentation",
     probeQueries: ["upsert", "relation include"],
   },
@@ -482,15 +540,17 @@ export const DEFAULT_REGISTRY: LibraryEntry[] = [
     ecosystem: "npm",
     aliases: ["react-query", "@tanstack/react-query"],
     urls: [
-      // Prefer working text; later candidates retain existing offline cache identities.
+      "https://tanstack.com/query/latest/llms.txt",
+      // Prefer the Query-specific index; retain every earlier source as a fallback.
       "https://tanstack.com/query/latest/docs/framework/react/guides/queries.md",
       "https://tanstack.com/llms.txt",
       "https://tanstack.com/query/llms-full.txt",
       "https://tanstack.com/query/llms.txt",
       "https://raw.githubusercontent.com/TanStack/query/main/README.md",
     ],
+    versionUrls: { "4": ["https://tanstack.com/query/v4/llms.txt"] },
     description: "TanStack Query (React Query) — async state, caching, mutations",
-    probeQueries: ["useQuery query keys", "loading and error states"],
+    probeQueries: ["optimistic updates", "query invalidation mutations"],
   },
   {
     name: "motion",
@@ -518,6 +578,9 @@ export const DEFAULT_REGISTRY: LibraryEntry[] = [
     probeQueries: ["send email react template", "domains verify"],
   },
 ];
+
+/** PAR-1272: the built-in names, for telling a same-name config replacement from an additive one. */
+const DEFAULT_NAMES: ReadonlySet<string> = new Set(DEFAULT_REGISTRY.map((e) => e.name));
 
 export interface Registry {
   entries: Map<string, LibraryEntry>;
@@ -704,6 +767,7 @@ function normaliseLayer(libraries: LibraryEntry[], display: string): LibraryEntr
       });
     }
     delete normalised.resolved;
+    delete normalised.replacedBuiltin;
     return normalised;
   });
 }
@@ -734,6 +798,11 @@ function applyLayer(
   display: string,
   notes: string[],
 ): void {
+  // PAR-1272: names an EARLIER config layer already set. A same-name entry in this layer replaces
+  // a built-in only when the name is a default and no earlier layer replaced it first. (A default
+  // can be copied when an alias is dropped, so object identity cannot tell.)
+  const configuredBefore = new Set(configNames);
+  const notedBuiltinReplacements = new Set<string>();
   // PAR-777 (D-78): two entries in the SAME layer whose canonical names are PEP 503 twins are
   // ambiguous — D-06/D-07's precedence rules decide which of two LAYERS wins, not which of two
   // entries declared side by side in one file should. Checked before anything else in this
@@ -880,6 +949,17 @@ function applyLayer(
     }
     const replaced = existingKey !== undefined ? entries.get(existingKey) : undefined;
     if (e.aliases === undefined && replaced?.aliases !== undefined) e.aliases = replaced.aliases;
+    // PAR-1272 (decided 2026-10-05): the exact-name replacement itself is unchanged — the whole
+    // entry is replaced, only aliases are inherited — but it is no longer silent.
+    if (existingKey === e.name && replaced !== undefined && DEFAULT_NAMES.has(e.name) && !configuredBefore.has(e.name)) {
+      e.replacedBuiltin = display;
+      if (!notedBuiltinReplacements.has(e.name)) {
+        notedBuiltinReplacements.add(e.name);
+        notes.push(
+          `vibectx: ${display}: "${clipText(e.name, MAX_CONFIG_VALUE_CHARS)}" replaces the built-in entry of the same name (its URLs and probes are not merged)`,
+        );
+      }
+    }
     if (existingKey !== undefined && existingKey !== e.name) {
       const rebuilt = [...entries].map(([k, v]) => (k === existingKey ? ([e.name, e] as const) : ([k, v] as const)));
       entries.clear();

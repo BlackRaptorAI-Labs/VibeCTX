@@ -2034,7 +2034,7 @@ describe("getDocsToolText (MCP get_docs tool body: alias resolution + unknown-li
     const reg: Registry = { entries: new Map([[name, { name, urls: [url] }]]) };
     const text = await getDocsToolText(reg, { library: name, version: "1.0.0", offline: true });
     expect(text).toContain("````\n" + name + "\n````");
-    expect(text).toContain("Version-matching applies only to packages resolved automatically");
+    expect(text).toContain("Not version-matched");
   });
 
   it("PAR-869: a quoted configured replacement name is not echoed through the flattened disclosure", async () => {
@@ -2177,7 +2177,7 @@ describe("getDocsToolText — version matching (A11/PAR-724)", () => {
     writeCache("react", REACT_URL, "# React\n\n## useEffect cleanup\n\nReturn a function from useEffect to run cleanup.");
     const spy = stubFetch({});
     const out = await getDocsToolText(registry, { library: "react", topic: "useEffect cleanup", version: "18.2.0" });
-    expect(out).toContain('Version 18.2.0 was requested, but "react" is a curated entry — version-matching applies only to packages resolved automatically.');
+    expect(out).toContain("Not version-matched: you asked for react 18.2.0, but VibeCTX has only the latest react docs for this library. Check APIs against 18.2.0.");
     expect(out).toContain(`Source: ${REACT_URL}`);
     expect(out).toContain("Return a function from useEffect");
     expect(spy).not.toHaveBeenCalled(); // no resolution attempted at all
@@ -2355,7 +2355,7 @@ describe("getDocsToolText — version matching (A11/PAR-724)", () => {
     const longName = "react"; // curated entries in this test's registry are short; the FIELD bound (name) is tested separately elsewhere (PAR-747)
     const out = await getDocsToolText(registry, { library: "react", topic: "useEffect cleanup", version: longVersion });
     expect(out).not.toContain(longVersion);
-    expect(out).toContain(`Version ${longVersion.slice(0, 99)}… was requested, but "${longName}" is a curated entry`);
+    expect(out).toContain(`Not version-matched: you asked for ${longName} ${longVersion.slice(0, 99)}…, but VibeCTX has only the latest ${longName} docs`);
   });
 });
 

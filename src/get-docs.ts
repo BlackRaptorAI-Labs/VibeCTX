@@ -1,4 +1,4 @@
-import { entryForVersion, installResolvedEntry, nearestLibraryName, resolveLibrary, unknownLibraryMessage, type LibraryEntry, type Registry } from "./registry.js";
+import { entryForVersion, majorVersionSources, retiredBuiltin, installResolvedEntry, nearestLibraryName, resolveLibrary, unknownLibraryMessage, type LibraryEntry, type Registry } from "./registry.js";
 import { lookupLibrary, redactResolvePathForModel, resolvePackage, type ResolveOutcome } from "./resolve.js";
 import {
   getLibraryDoc,
@@ -25,6 +25,7 @@ import {
   thinMatchNote,
   versionFallbackNote,
   requiredHeader,
+  fitStampLine,
   fitRetrievedTextDetailed,
   BUDGET_CUT_MARKER,
   fenceEchoedIdentifier,
@@ -33,6 +34,7 @@ import {
   MAX_FOLLOWED_BYTES,
   type SplitSection,
   type StampFacts,
+  type MandatoryHeader,
 } from "./retrieval.js";
 import { indexCachedDocument, documentHash } from "./search-index.js";
 import { clipText } from "./text.js";
@@ -41,6 +43,7 @@ import { recordActivity, type ActivityOutcome } from "./activity-log.js";
 import { readDoctorVerdicts } from "./doctor-store.js";
 import { bugFailureOffer } from "./bug-report.js";
 import { VERSION } from "./version.js";
+import { REPO_URL } from "./repository.js";
 import { MAX_TOPIC_CHARS, validateTokenBudget } from "./limits.js";
 
 /** D-26: what a topic search returns — whole matching sections (the default), or just
@@ -104,7 +107,7 @@ export interface GetDocsOutcome {
    *  alongside it, present only when a redirect actually moved the fetch somewhere else.
    *  `version` (A11/PAR-724) is the version this document was matched to, set only on a
    *  genuine version-specific match. */
-  source?: { url: string; stale: boolean; fetchedAt: string; curated: boolean; finalUrl?: string; version?: string };
+  source?: { url: string; stale: boolean; fetchedAt: string; curated: boolean; finalUrl?: string; version?: string; primarySizeSkipNote?: string };
   /** `documentHash` (search-index.ts) of the primary document's content — set exactly when
    *  `source` is (A20/PAR-729, D-51: what the activity log records instead of the text). */
   contentHash?: string;
@@ -168,6 +171,77 @@ export interface GetDocsOutcome {
 }
 
 const DEFAULT_BUDGET_TOKENS = 4000;
+
+/** PAR-1268 (D4; plan D11(b), decided 2026-10-05): the config fix for a name that was built in
+ *  through 0.1.2. It links the example config on GitHub (from the one repository address), since
+ *  the npm package ships no `docs/` folder. */
+const EXAMPLE_CONFIG_URL = `${REPO_URL}/blob/main/docs/examples/node-api-stack.vibectx.config.json`;
+function retiredBuiltinNote(name: string): string {
+  return `${name} was built into VibeCTX through 0.1.2. To keep its curated sources, add it from ${EXAMPLE_CONFIG_URL}.`;
+}
+
+/** The config fix alone, for a blocked retired name after its historical notice was shown. */
+function retiredBuiltinRemedy(name: string): string {
+  return `To use ${name}, add it to your config from ${EXAMPLE_CONFIG_URL}.`;
+}
+
+/** Retired names whose historical notice this process has already shown (D4: once per process
+ *  for all five; a blocked name keeps getting the config fix without it). */
+const retiredNotesShown = new Set<string>();
+
+/** PAR-1272: libraries whose same-name config replacement this process has already stated. */
+const overrideNotesShown = new Set<string>();
+
+/** Test seam: forget which config-replacement notes this process has shown. */
+export function resetOverrideNotes(): void {
+  overrideNotesShown.clear();
+}
+
+/** Test seam: forget which retired-name notes this process has shown. */
+export function resetRetiredBuiltinNotes(): void {
+  retiredNotesShown.clear();
+}
+
+/** A11/PAR-724 — the version verdict `getDocsToolText` resolves and `getDocsDetailed` renders. */
+type VersionContext = {
+  requested: string;
+  matched: boolean;
+  note?: string;
+  /** PAR-1269 (D6): set when a curated entry's `versionUrls` supplied this major's sources. The
+   *  match is to the MAJOR only, so the Source line names no exact version. */
+  major?: string;
+};
+
+
+/** PAR-1269 (D5, decided 2026-10-05) — appended to the Source line whenever a version was
+ *  requested and not matched, on every path (curated entry, resolved fallback to latest, an
+ *  invalid or unchecked version). Deliberately NOT the stamp's own `version` slot: "· version
+ *  <x>" means a confirmed match, and no fallback may ever contain "· version" (A11/PAR-724). */
+const NOT_VERSION_MATCHED_MARK = " · not version-matched";
+
+/** `requiredHeader` plus the PAR-1269 mark. The mark is part of the mandatory header (plan D8:
+ *  every path where a version was requested and not matched carries it): its room is reserved
+ *  before the stamp is fitted, and when the verdict, the stamp's floor and the mark cannot all
+ *  fit, the call refuses, exactly as `requiredHeader` already does for the verdict and stamp. */
+function headerWithVersionMark(facts: StampFacts, versionVerdict: string | undefined, maxChars: number, mark: boolean): MandatoryHeader {
+  if (!mark) return requiredHeader(facts, versionVerdict, maxChars);
+  const marked = requiredHeader(facts, versionVerdict, Math.max(0, maxChars - NOT_VERSION_MATCHED_MARK.length));
+  if (!marked.refuse && marked.text !== undefined && marked.text.length + NOT_VERSION_MATCHED_MARK.length <= maxChars) {
+    return { ...marked, text: `${marked.text}${NOT_VERSION_MATCHED_MARK}` };
+  }
+  const floor = (versionVerdict !== undefined ? versionVerdict.length + 1 : 0) + fitStampLine(facts, 0).length + NOT_VERSION_MATCHED_MARK.length;
+  return { refuse: true, minTokensNeeded: Math.ceil(floor / 4) };
+}
+
+/** PAR-1269 (D5, decided 2026-10-05) — consequence first: what the reader is getting (the latest
+ *  docs) and what to do about it, not the mechanism ("curated entry"). Same bounds as before:
+ *  the version at `MAX_STAMP_VERSION_CHARS`, the name at `MAX_STAMP_FIELD_CHARS`. The caller
+ *  keeps the fenced variant for a name containing a quote. */
+function versionNotMatchedNote(name: string, version: string): string {
+  const v = clipText(version, MAX_STAMP_VERSION_CHARS);
+  const n = clipText(name, MAX_STAMP_FIELD_CHARS);
+  return `Not version-matched: you asked for ${n} ${v}, but VibeCTX has only the latest ${n} docs for this library. Check APIs against ${v}.`;
+}
 
 const sectionKey = (s: { heading: string; body: string }) => `${s.heading}\n${s.body}`;
 
@@ -293,16 +367,40 @@ export async function getDocsToolText(
   validateTokenBudget(args.maxTokens);
   const { library, version, ...rest } = args;
   let entry = lookupLibrary(registry, library);
+  // PAR-1268 (plan D11(c), decided 2026-10-05): a record saved by 0.3.0 for timescaledb, pgvector
+  // or aws-cdk points at a different package. On this path it is ignored, so the request takes the
+  // blocked-name branch below (config fix, no network). A config entry is not a resolved record.
+  if (entry?.resolved !== undefined) {
+    const retiredRecord = retiredBuiltin(entry.name) ?? retiredBuiltin(library);
+    if (retiredRecord !== undefined && !retiredRecord.resolves) entry = undefined;
+  }
   let resolutionNote: string | undefined;
   // A11/PAR-724 — the already-resolved verdict `getDocsDetailed` renders into the stamp/note;
   // computed here (never inside `getDocsDetailed` itself, which never calls `resolvePackage` —
   // see its own doc comment) because only THIS layer knows whether `library` needed resolving
   // at all.
-  let versionContext: { requested: string; matched: boolean; note?: string } | undefined;
+  let versionContext: VersionContext | undefined;
   if (!entry) {
+    // PAR-1268 (D4): a name that was built in through 0.1.2 and has no config entry. The ones a
+    // lookup would misidentify are never looked up; the others get the note once, then resolve.
+    const retired = retiredBuiltin(library);
+    if (retired !== undefined && !retired.resolves) {
+      // D4 / plan D11(c): the historical notice once per process; every call keeps the config
+      // link and the reason no lookup is made, since that is the whole reply.
+      recordActivity({ tool: "get_docs", library, query: rest.topic, outcome: "unresolved" });
+      const firstTime = !retiredNotesShown.has(retired.name);
+      retiredNotesShown.add(retired.name);
+      const remedy = firstTime ? retiredBuiltinNote(retired.name) : retiredBuiltinRemedy(retired.name);
+      return `${remedy} VibeCTX does not look this name up on npm or PyPI, because that finds a different package.`;
+    }
+    let retiredNote: string | undefined;
+    if (retired !== undefined && !retiredNotesShown.has(retired.name)) {
+      retiredNotesShown.add(retired.name);
+      retiredNote = retiredBuiltinNote(retired.name);
+    }
     if (rest.offline) {
       recordActivity({ tool: "get_docs", library, query: rest.topic, outcome: "unresolved" });
-      return unknownLibraryMessage(registry, library);
+      return `${retiredNote !== undefined ? `${retiredNote}\n\n` : ""}${unknownLibraryMessage(registry, library)}`;
     }
     const out = await resolvePackage(library, { version, strictDns: registry.strictDns, signal });
     if (!out.ok || !out.entry) {
@@ -310,14 +408,19 @@ export async function getDocsToolText(
       const failure = out.operationalFailure && !out.notFound && !out.limited && !out.versionShapeRejected
         ? `\n\n${bugFailureOffer({ operation: "get_docs", where: out.operationalFailure, errorClass: out.operationalFailure === "cache" ? "CacheError" : "NetworkError", version: VERSION, platform: process.platform, nodeVersion: process.version })}`
         : "";
-      return `${redactResolvePathForModel(out.text)}${failure}`;
+      return `${retiredNote !== undefined ? `${retiredNote}\n\n` : ""}${redactResolvePathForModel(out.text)}${failure}`;
     }
     // S2: a resolved entry never replaces a curated one; if a curated entry owns the name
     // (it cannot, since the lookup above missed — but the guard is the invariant), serve that.
     entry = installResolvedEntry(registry, out.persistedEntry ?? out.entry)
       ? (registry.strictDns ? { ...out.entry, strictDns: true } : out.entry)
       : (resolveLibrary(registry, out.entry.name) ?? out.entry);
-    resolutionNote = provenanceLine(registry, library, out);
+    // PAR-1268 (D4): the retired-name note goes first; provenance is fitted to the room left, so
+    // the combined note stays inside MAX_RESOLUTION_NOTE_CHARS and the fenced description is
+    // never cut by the final clip.
+    resolutionNote = retiredNote !== undefined
+      ? `${retiredNote}\n${provenanceLine(registry, library, out, MAX_RESOLUTION_NOTE_CHARS - retiredNote.length - 1)}`
+      : provenanceLine(registry, library, out);
     if (version !== undefined) {
       versionContext = {
         requested: version,
@@ -374,6 +477,12 @@ export async function getDocsToolText(
         };
       }
     }
+  } else if (version !== undefined && entry.resolved === undefined && majorVersionSources(entry, version) !== undefined) {
+    // PAR-1269 (D6, amends D-76) — a curated entry that lists this major's own sources is served
+    // from them: they become this call's candidate list for the existing fetch path, nothing else.
+    const sources = majorVersionSources(entry, version)!;
+    entry = { ...entry, urls: sources.urls };
+    versionContext = { requested: version, matched: true, major: sources.major };
   } else if (version !== undefined && entry.resolved === undefined) {
     // A11/PAR-724 — a curated (default-registry or config) entry's `urls` are hand-picked doc
     // sources, not derived from registry metadata, so there is no version-specific candidate to
@@ -383,8 +492,8 @@ export async function getDocsToolText(
       requested: version,
       matched: false,
       note: entry.name.includes('"')
-        ? `Version ${clipText(version, MAX_STAMP_VERSION_CHARS)} was requested for this curated entry:\n${fenceEchoedIdentifier(entry.name, MAX_STAMP_FIELD_CHARS)}\nVersion-matching applies only to packages resolved automatically.`
-        : `Version ${clipText(version, MAX_STAMP_VERSION_CHARS)} was requested, but "${clipText(entry.name, MAX_STAMP_FIELD_CHARS)}" is a curated entry — version-matching applies only to packages resolved automatically.`,
+        ? `Not version-matched: you asked for version ${clipText(version, MAX_STAMP_VERSION_CHARS)} of this library:\n${fenceEchoedIdentifier(entry.name, MAX_STAMP_FIELD_CHARS)}\nbut VibeCTX has only its latest docs. Check APIs against ${clipText(version, MAX_STAMP_VERSION_CHARS)}.`
+        : versionNotMatchedNote(entry.name, version),
     };
   }
   // security-architect round 2, S4 — a security-relevant fact (this entry's identity was
@@ -400,7 +509,17 @@ export async function getDocsToolText(
     resolutionNote = entry.name.includes('"') || entry.replaces.includes('"')
       ? "Note: this entry was configured to explicitly replace another name (a punctuation-twin override, vibectx.config.json). Inspect the config for the exact names."
       : `Note: "${clipText(entry.name, MAX_STAMP_FIELD_CHARS)}" was configured to explicitly replace "${clipText(entry.replaces, MAX_STAMP_FIELD_CHARS)}" (a punctuation-twin override, vibectx.config.json).`;
+  }  // PAR-1272 (decided 2026-10-05): a config entry that replaced the built-in entry of the same
+  // name says so once per process, in the same disclosure slot. Only the config file's base name
+  // is shown: a tool reply never carries a local folder.
+  if (resolutionNote === undefined && entry?.replacedBuiltin !== undefined && !overrideNotesShown.has(entry.name)) {
+    overrideNotesShown.add(entry.name);
+    const file = entry.replacedBuiltin.split(/[\\/]/).pop() ?? "";
+    resolutionNote = entry.name.includes('"') || file.includes('"') || file.length === 0
+      ? "Note: this entry from a config file replaces the built-in entry of the same name (its URLs and probes are not merged)."
+      : `Note: "${clipText(entry.name, MAX_STAMP_FIELD_CHARS)}" from ${clipText(file, MAX_STAMP_FIELD_CHARS)} replaces the built-in entry of the same name (its URLs and probes are not merged).`;
   }
+
   // A17 (PAR-726): resolutionNote used to be prepended here, entirely outside getDocsDetailed's
   // own budget accounting — exactly A6's original mistake, repeated. It is now passed down and
   // priced as part of the header alongside the standing stamp, so on every path `clipToBudget`
@@ -453,7 +572,7 @@ export async function getDocsToolText(
  *  document is still returned and the call still exits 0: the resolution lives in memory
  *  for the rest of this process even when `resolved.json` could not be written, so losing
  *  the save is not losing the answer. */
-function provenanceLine(registry: Registry, requested: string, out: ResolveOutcome): string {
+function provenanceLine(registry: Registry, requested: string, out: ResolveOutcome, maxChars: number = MAX_RESOLUTION_NOTE_CHARS): string {
   const label = out.source === "pypi" ? "PyPI" : "npm";
   const facts: string[] = [];
 
@@ -471,7 +590,7 @@ function provenanceLine(registry: Registry, requested: string, out: ResolveOutco
     facts.push(`resolution not saved: ${reason}`);
   }
   const summary = `> Resolved "${requested}" via ${label} on this call — not a curated entry; verify this is the package you meant. `;
-  if (!out.entry?.description) return `${summary}${facts.join(" · ")}`.trimEnd();
+  if (!out.entry?.description) return clipText(`${summary}${facts.join(" · ")}`.trimEnd(), maxChars);
   // Reuse the existing variable-width fence as an inline data span. Reserve the
   // complete span before clipping trusted facts so no budget can expose its contents
   // as new provenance fields. Package text is never a fact authored by this tool.
@@ -482,7 +601,8 @@ function provenanceLine(registry: Registry, requested: string, out: ResolveOutco
     description = fenceEchoedIdentifier(out.entry.description, descriptionLimit).split("\n").slice(1).join(" ");
   }
   const labelText = "(package-supplied) description: ";
-  const room = MAX_RESOLUTION_NOTE_CHARS - description.length - labelText.length - 1;
+  // PAR-1268: floor at 1 — `clipText` with a negative limit would keep most of the text.
+  const room = Math.max(1, maxChars - description.length - labelText.length - 1);
   return `${clipText(summary + facts.join(" · "), room)} ${labelText}${description}`;
 }
 
@@ -520,7 +640,7 @@ export async function getDocsDetailed(
   resolutionNote?: string,
   // A11/PAR-724 — the already-resolved version verdict; see `getDocsToolText`'s own comment for
   // why this function itself never calls `resolvePackage` to compute it.
-  versionContext?: { requested: string; matched: boolean; note?: string },
+  versionContext?: VersionContext,
   /** PAR-853 — the MCP request's own cancellation, when the transport exposes one
    *  (`server.ts` threads `extra.signal` in here for the `get_docs` tool): combined with the
    *  whole-operation deadline inside `getLibraryDoc`, so a client that gives up actually stops
@@ -555,7 +675,10 @@ export async function getDocsDetailed(
     };
   }
   const topic = args.topic?.trim() || undefined;
-  const resolutionPrefix = resolutionNote ? `${clipText(resolutionNote, MAX_RESOLUTION_NOTE_CHARS)}\n` : "";
+  let resolutionPrefix = resolutionNote ? `${clipText(resolutionNote, MAX_RESOLUTION_NOTE_CHARS)}\n` : "";
+  // PAR-1269 (D5): every path where a version was requested and not matched marks its Source
+  // line, including the nothing-cached line below.
+  const versionNotMatched = versionContext !== undefined && !versionContext.matched;
   const curated = isCurated(entry);
   const doc = await getLibraryDoc(entry, { offline: args.offline, signal, lookup });
   if (!doc) {
@@ -571,7 +694,12 @@ export async function getDocsDetailed(
     // Nit (code-reviewer, Phase 3 round 2): field order matches `sourceStampLine`'s own
     // convention (`url · fetched · fresh · curated`, curated/resolved LAST), not curated
     // second.
-    const noDocStamp = `Source: none · nothing cached · ${curated ? "curated" : "resolved"}`;
+    const noDocStamp = `Source: none · nothing cached · ${curated ? "curated" : "resolved"}${versionNotMatched ? NOT_VERSION_MATCHED_MARK : ""}`;
+    // PAR-1269 (D6, decided 2026-10-05): a listed major's own sources failed and nothing is
+    // cached. No fallback to the latest docs, and the reply says so in plain words.
+    const majorLine = versionContext?.major === undefined
+      ? ""
+      : `The version-specific docs for major ${versionContext.major} could not be fetched. ${args.offline ? "This call is offline and they are not cached." : "They are not cached, and VibeCTX did not fall back to the latest docs."}\n`;
     // PAR-849 — folded in from independent verification: the second line always claimed "all
     // candidate URLs unreachable", which is false on a fully offline call (`args.offline`) —
     // zero fetches were ever attempted, so nothing was "unreachable"; that word describes a
@@ -600,7 +728,7 @@ export async function getDocsDetailed(
     // this is the branch most likely to fire for a token-bearing URL (the fetch failed, or the
     // call is offline), and it was echoing the query string in full.
     return {
-      text: `${resolutionPrefix}${noDocStamp}\n${attemptLine}\n${entry.urls.map((u) => clipText(stripStampQuery(u), MAX_STAMP_FIELD_CHARS)).join("\n")}`,
+      text: `${resolutionPrefix}${noDocStamp}\n${majorLine}${attemptLine}\n${entry.urls.map((u) => clipText(stripStampQuery(u), MAX_STAMP_FIELD_CHARS)).join("\n")}`,
       isIndex: false,
       matched: 0,
       returnedFromFollowed: 0,
@@ -608,10 +736,26 @@ export async function getDocsDetailed(
       dropped: noDropped,
     };
   }
+  // PAR-1270: keep one bounded notice; whole URLs/counts degrade without losing the size fact.
+  const skippedDocUrls = doc.skippedTooLarge
+    ? doc.skippedTooLarge.map((url) => clipText(stripStampQuery(url), MAX_STAMP_FIELD_CHARS))
+    : [];
+  const sizeSkipSummary = `Skipped ${skippedDocUrls.length} candidates larger than the 25 MiB limit.`;
+  const sizeSkipServing = `; serving ${clipText(stripStampQuery(doc.url), MAX_STAMP_FIELD_CHARS)}${doc.stale ? " from cache" : ""} instead.`;
+  let primarySizeSkipNote: string | undefined;
+  if (skippedDocUrls.length > 0) {
+    for (let shown = skippedDocUrls.length; shown >= 1; shown--) {
+      const more = shown < skippedDocUrls.length ? `, and ${skippedDocUrls.length - shown} more` : "";
+      const note = `Skipped ${skippedDocUrls.slice(0, shown).join(", ")}${more}: larger than the 25 MiB limit${sizeSkipServing}`;
+      if (note.length <= MAX_RESOLUTION_NOTE_CHARS) { primarySizeSkipNote = note; break; }
+    }
+    primarySizeSkipNote ??= `${sizeSkipSummary.slice(0, -1)}${sizeSkipServing}`;
+  }
   // A11/PAR-724 — the version this document is actually matched to, when it is; computed once
   // and reused by `source` (the structured outcome) and `stampFacts` (the rendered line) so the
   // two can never disagree.
-  const matchedVersion = versionContext?.matched ? versionContext.requested : undefined;
+  // PAR-1269 (D6): a major-only match names no exact version on the Source line or in `source`.
+  const matchedVersion = versionContext?.matched && versionContext.major === undefined ? versionContext.requested : undefined;
   // PAR-776 (D-74) — `source.url` stays the CANDIDATE `doc.url`, unconditionally: `doctor.ts`
   // reads it straight into `readCache(entry.name, source.url, ttlHours)`, which requires the
   // exact candidate the cache is keyed by, never the post-redirect `finalUrl`. `finalUrl` is
@@ -624,6 +768,7 @@ export async function getDocsDetailed(
     fetchedAt: doc.fetchedAt,
     curated,
     version: matchedVersion,
+    ...(primarySizeSkipNote !== undefined ? { primarySizeSkipNote } : {}),
     ...(didRedirect(doc.url, doc.finalUrl) ? { finalUrl: doc.finalUrl } : {}),
   };
   // A20/PAR-729: the same hash the search index already computes to detect a changed
@@ -659,7 +804,9 @@ export async function getDocsDetailed(
   // partial sentence (unchanged from before this item), but "drop the verdict, keep the stamp"
   // is no longer a legal outcome either — see `requiredHeader`'s own comment (retrieval.ts) for
   // why both survive together or the call refuses.
-  const versionVerdict = versionContext && !versionContext.matched ? (versionContext.note ?? versionFallbackNote(versionContext.requested)) : undefined;
+  const versionVerdict = versionContext?.major !== undefined
+    ? `Version-matched: major ${versionContext.major} (from ${clipText(stripStampQuery(doc.url), MAX_STAMP_FIELD_CHARS)})`
+    : versionContext && !versionContext.matched ? (versionContext.note ?? versionFallbackNote(versionContext.requested)) : undefined;
   // A18 (PAR-727): built once, reused by both the standing `docStamp` below and `thinMatch`'s
   // own re-fitted stamp further down — the same facts, just re-degraded around less room.
   // PAR-776 (D-74): `url` here is the URL the content actually came from (`doc.finalUrl`), not
@@ -684,6 +831,20 @@ export async function getDocsDetailed(
     doctorKind: doctorUnhealthy ? doctorVerdict.kind : undefined,
     doctorCheckedAt: doctorUnhealthy ? doctorVerdict.checkedAt : undefined,
   };
+  // PAR-1270: a diagnostic must not consume the mandatory source/version or body floor.
+  // Retain the bounded detail in source for doctor; at small budgets render a complete summary.
+  // If even the summary cannot fit, the pre-existing refusal stays unaltered.
+  if (primarySizeSkipNote !== undefined) {
+    const room = Math.max(0, budgetChars - resolutionPrefix.length - prefix.length);
+    const floor = headerWithVersionMark(stampFacts, versionVerdict, 0, versionNotMatched);
+    const bodyFloor = fitRetrievedTextDetailed("x", 1000).text.length + BUDGET_CUT_MARKER.length + 2;
+    const refusalFloor = budgetRefusalText(floor.minTokensNeeded, versionVerdict !== undefined).length;
+    const noticeRoom = Math.max(0, Math.min(MAX_RESOLUTION_NOTE_CHARS, Math.floor(room / 4),
+      room - (floor.minTokensNeeded ?? 0) * 4 - bodyFloor, room - refusalFloor - 1));
+    const renderedSizeSkipNote = [primarySizeSkipNote, `${sizeSkipSummary.slice(0, -1)}${sizeSkipServing}`, sizeSkipSummary]
+      .find((note) => note.length + 1 <= noticeRoom);
+    if (renderedSizeSkipNote !== undefined) resolutionPrefix += `${renderedSizeSkipNote}\n`;
+  }
   // PAR-848/849 (Phase 3), amending D-50 — the mandatory reservation shared by the no-topic,
   // no-match and success headers below (all three price the SAME room: whatever
   // `resolutionPrefix`/`prefix` left of `budgetChars`). `thinMatch` reserves its own, smaller
@@ -692,7 +853,7 @@ export async function getDocsDetailed(
   // (when one is needed) and the stamp both fit, or this whole call refuses outright: see
   // `requiredHeader`'s own comment (retrieval.ts) for why "drop one, keep the other" is no
   // longer a legal outcome for either half.
-  const mandatory = requiredHeader(stampFacts, versionVerdict, Math.max(0, budgetChars - resolutionPrefix.length - prefix.length));
+  const mandatory = headerWithVersionMark(stampFacts, versionVerdict, Math.max(0, budgetChars - resolutionPrefix.length - prefix.length), versionNotMatched);
   if (mandatory.refuse) {
     // code-reviewer B1 (Phase 3, round 2) — the refusal is a short, fixed-shape diagnostic, the
     // same class `noMatch` already is (see its own comment below): bounded by construction
@@ -1073,7 +1234,7 @@ export async function getDocsDetailed(
   const thinMatch = (what: string, matchedCount: number): GetDocsOutcome => {
     const note = thinMatchNote(what, matchedCount);
     const room = Math.max(0, budgetChars - resolutionPrefix.length - prefix.length - note.length - 1);
-    const thinMandatory = requiredHeader(stampFacts, versionVerdict, room);
+    const thinMandatory = headerWithVersionMark(stampFacts, versionVerdict, room, versionNotMatched);
     if (thinMandatory.refuse) {
       // code-reviewer B1 (Phase 3, round 2) — same exemption as the early refusal above, same
       // reason: a bounded, fixed-shape diagnostic should not be handed to `clipToBudget`, which
